@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nuggets</title>
+<style>
+  :root {
+    --bg: #101114; --card: #1a1c21; --card2: #22252c; --line: #2c3038;
+    --ink: #e8e8e6; --dim: #9a9da5; --faint: #6b6f78;
+    --accent: #5aa8f0; --gold: #e0b34e; --good: #6fc48d;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding-bottom: 40px;
+  }
+  header {
+    position: sticky; top: 0; z-index: 5; background: var(--bg);
+    border-bottom: 1px solid var(--line); padding: 8px 10px 6px;
+  }
+  .modes { display: flex; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .modes button {
+    flex: none; border: 1px solid var(--line); background: var(--card);
+    color: var(--dim); border-radius: 16px; padding: 6px 14px; font-size: 14px;
+  }
+  .modes button.on { background: var(--accent); border-color: var(--accent); color: #08131f; font-weight: 600; }
+  .filters { display: flex; gap: 6px; margin-top: 6px; overflow-x: auto; }
+  .filters select {
+    flex: none; background: var(--card); color: var(--dim);
+    border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; font-size: 13px;
+    max-width: 40vw;
+  }
+  #count { font-size: 12px; color: var(--faint); margin-top: 5px; }
+  main { padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; max-width: 760px; margin: 0 auto; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .card.watched { opacity: 0.55; }
+  .hl { font-weight: 600; cursor: pointer; }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; font-size: 12px; color: var(--dim); }
+  .chip { background: var(--card2); border-radius: 10px; padding: 1px 8px; }
+  .score { font-variant-numeric: tabular-nums; }
+  .score.p { color: var(--accent); }
+  .score.e { color: var(--gold); }
+  .body { display: none; margin-top: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .card.open .body { display: block; }
+  .content { white-space: pre-wrap; }
+  .rationale { margin-top: 8px; font-size: 12.5px; color: var(--faint); }
+  .actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .watch {
+    display: inline-block; background: var(--accent); color: #08131f;
+    border-radius: 8px; padding: 8px 14px; text-decoration: none; font-weight: 600; font-size: 14px;
+  }
+  .stars { display: flex; gap: 2px; }
+  .stars button {
+    background: none; border: none; font-size: 24px; color: var(--faint);
+    padding: 2px 4px; line-height: 1;
+  }
+  .stars button.lit { color: var(--gold); }
+  .wtoggle {
+    background: var(--card2); border: 1px solid var(--line); color: var(--dim);
+    border-radius: 8px; padding: 7px 12px; font-size: 13px;
+  }
+  .wtoggle.on { color: var(--good); border-color: var(--good); }
+  .empty { color: var(--faint); text-align: center; padding: 40px 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="modes" id="modes"></div>
+  <div class="filters">
+    <select id="fChannel"><option value="">channel</option></select>
+    <select id="fDomain"><option value="">domain</option></select>
+    <select id="fType"><option value="">type</option></select>
+    <select id="fState">
+      <option value="">any state</option>
+      <option value="unrated">unrated</option>
+      <option value="unwatched">unwatched</option>
+      <option value="watched">watched</option>
+    </select>
+  </div>
+  <div id="count"></div>
+</header>
+<main id="list"><div class="empty">Loading…</div></main>
+<script>
+// Static shell (GitHub Pages). All data comes from the key-gated Supabase
+// function below; the key lives only in the bookmark's ?key= parameter.
+const BASE = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-review";
+const KEY = new URLSearchParams(location.search).get("key");
+const MODES = [["comfort","Comfort"],["stretch","Stretch"],["newest","Newest"],["queue","Queue"]];
+let all = [], slope = 0, intercept = 0;
+let state = Object.assign(
+  { mode: "comfort", channel: "", domain: "", type: "", vstate: "" },
+  JSON.parse(localStorage.getItem("ytr") || "{}"));
+let openId = null;
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g,
+    (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function save() { localStorage.setItem("ytr", JSON.stringify(state)); }
+function fmtT(s) { return Math.floor(s/60) + ":" + String(s%60).padStart(2,"0"); }
+function fmtD(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+function residual(n) { return n.expert_score - (intercept + slope * n.personal_score); }
+
+function regress() {
+  const pts = all.filter(n => n.personal_score != null && n.expert_score != null);
+  const N = pts.length;
+  if (N < 3) { slope = 0; intercept = 0; return; }
+  let sx=0, sy=0, sxx=0, sxy=0;
+  for (const n of pts) { sx+=n.personal_score; sy+=n.expert_score;
+    sxx+=n.personal_score*n.personal_score; sxy+=n.personal_score*n.expert_score; }
+  const denom = N*sxx - sx*sx;
+  slope = denom ? (N*sxy - sx*sy) / denom : 0;
+  intercept = (sy - slope*sx) / N;
+}
+
+function visible() {
+  let v = all.slice();
+  if (state.channel) v = v.filter(n => n.channelLabel === state.channel);
+  if (state.domain) v = v.filter(n => n.domain === state.domain);
+  if (state.type) v = v.filter(n => n.nugget_type === state.type);
+  if (state.vstate === "unrated") v = v.filter(n => n.rating == null);
+  if (state.vstate === "unwatched") v = v.filter(n => !n.watched_at);
+  if (state.vstate === "watched") v = v.filter(n => n.watched_at);
+  if (state.mode === "queue") {
+    v = v.filter(n => n.rating >= 4 && !n.watched_at);
+    v.sort((a,b) => (b.rating - a.rating) || (b.personal_score - a.personal_score));
+  } else if (state.mode === "comfort") {
+    v.sort((a,b) => b.personal_score - a.personal_score);
+  } else if (state.mode === "stretch") {
+    v.sort((a,b) => residual(b) - residual(a));
+  } else {
+    v.sort((a,b) => new Date(b.publishedAt || b.created_at) - new Date(a.publishedAt || a.created_at));
+  }
+  return v;
+}
+
+function render() {
+  document.getElementById("modes").innerHTML = MODES.map(([id, label]) =>
+    '<button class="' + (state.mode === id ? "on" : "") + '" onclick="setMode(\'' + id + '\')">' + label + "</button>"
+  ).join("");
+  const v = visible();
+  document.getElementById("count").textContent =
+    v.length + " nuggets" + (state.mode === "stretch" ? " — sorted by how much the mentor disagrees with your taste" : "");
+  const list = document.getElementById("list");
+  if (!v.length) { list.innerHTML = '<div class="empty">Nothing here.</div>'; return; }
+  list.innerHTML = v.map(card).join("");
+}
+
+function card(n) {
+  const open = n.id === openId;
+  const link = "https://www.youtube.com/watch?v=" + n.video_id +
+    (n.start_seconds != null ? "&t=" + n.start_seconds + "s" : "");
+  const watchLabel = n.start_seconds != null ? "&#9654; Watch at " + fmtT(n.start_seconds) : "&#9654; Watch video";
+  const res = state.mode === "stretch"
+    ? ' <span class="chip">mentor +' + residual(n).toFixed(0) + "</span>" : "";
+  return '<div class="card' + (open ? " open" : "") + (n.watched_at ? " watched" : "") + '">' +
+    '<div class="hl" onclick="toggle(\'' + n.id + '\')">' + esc(n.headline || n.content.slice(0, 110)) + "</div>" +
+    '<div class="meta">' +
+      "<b>" + esc(n.channelLabel) + "</b>" +
+      "<span>" + fmtD(n.publishedAt || n.created_at) + "</span>" +
+      (n.domain ? '<span class="chip">' + esc(n.domain) + "</span>" : "") +
+      (n.nugget_type ? '<span class="chip">' + esc(n.nugget_type) + "</span>" : "") +
+      '<span class="score p">P' + Math.round(n.personal_score) + "</span>" +
+      '<span class="score e">E' + Math.round(n.expert_score) + "</span>" + res +
+      (n.rating ? '<span class="chip" style="color:var(--gold)">&#9733;' + n.rating + "</span>" : "") +
+    "</div>" +
+    '<div class="body">' +
+      '<div class="content">' + esc(n.content) + "</div>" +
+      (n.rationale ? '<div class="rationale">' + esc(n.rationale) + "</div>" : "") +
+      '<div class="actions">' +
+        '<a class="watch" target="_blank" rel="noopener" href="' + link + '">' + watchLabel + "</a>" +
+        '<div class="stars">' + [1,2,3,4,5].map(k =>
+          '<button class="' + (n.rating >= k ? "lit" : "") + '" onclick="rate(\'' + n.id + '\',' + k + ')">&#9733;</button>'
+        ).join("") + "</div>" +
+        '<button class="wtoggle' + (n.watched_at ? " on" : "") + '" onclick="watched(\'' + n.id + '\')">' +
+          (n.watched_at ? "watched &#10003;" : "mark watched") + "</button>" +
+      "</div>" +
+    "</div></div>";
+}
+
+function setMode(m) { state.mode = m; save(); render(); }
+function toggle(id) { openId = openId === id ? null : id; render(); }
+
+async function post(path, body) {
+  await fetch(BASE + path + "?key=" + encodeURIComponent(KEY), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+async function rate(id, k) {
+  const n = all.find(x => x.id === id);
+  const next = n.rating === k ? null : k; // tap the same star again to clear
+  n.rating = next; render();
+  await post("/rate", { id, rating: next });
+}
+async function watched(id) {
+  const n = all.find(x => x.id === id);
+  n.watched_at = n.watched_at ? null : new Date().toISOString(); render();
+  await post("/watched", { id, watched: !!n.watched_at });
+}
+
+function bindFilter(sel, prop) {
+  const el = document.getElementById(sel);
+  el.value = state[prop] || "";
+  el.onchange = () => { state[prop] = el.value; save(); render(); };
+}
+
+async function load() {
+  if (!KEY) {
+    document.getElementById("list").innerHTML =
+      '<div class="empty">Missing ?key= in the URL — open this page from your bookmark.</div>';
+    return;
+  }
+  let res;
+  try {
+    res = await fetch(BASE + "/data?key=" + encodeURIComponent(KEY));
+  } catch (e) {
+    document.getElementById("list").innerHTML = '<div class="empty">Could not reach the nugget API.</div>';
+    return;
+  }
+  if (!res.ok) {
+    document.getElementById("list").innerHTML =
+      '<div class="empty">API error ' + res.status + (res.status === 401 ? " — key rejected." : "") + "</div>";
+    return;
+  }
+  const data = await res.json();
+  all = (data.nuggets || []).map(n => ({
+    ...n,
+    channelLabel: n.yt_videos?.yt_channels?.label || n.yt_videos?.channel_id || "?",
+    videoTitle: n.yt_videos?.title || "",
+    publishedAt: n.yt_videos?.published_at,
+  }));
+  regress();
+  const fill = (sel, values) => {
+    const el = document.getElementById(sel);
+    [...new Set(values.filter(Boolean))].sort().forEach(vv => {
+      const o = document.createElement("option"); o.value = vv; o.textContent = vv; el.appendChild(o);
+    });
+  };
+  fill("fChannel", all.map(n => n.channelLabel));
+  fill("fDomain", all.map(n => n.domain));
+  fill("fType", all.map(n => n.nugget_type));
+  bindFilter("fChannel", "channel");
+  bindFilter("fDomain", "domain");
+  bindFilter("fType", "type");
+  bindFilter("fState", "vstate");
+  render();
+}
+load();
+</script>
+</body>
+</html>
