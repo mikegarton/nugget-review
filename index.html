@@ -33,6 +33,9 @@
     max-width: 40vw;
   }
   #count { font-size: 12px; color: var(--faint); margin-top: 5px; }
+  #status { font-size: 12px; margin-top: 4px; display: none; }
+  #status.quiet { display: block; color: var(--good); }
+  #status.alarm { display: block; color: #e0704e; font-weight: 600; }
   main { padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; max-width: 760px; margin: 0 auto; }
   .card {
     background: var(--card); border: 1px solid var(--line); border-radius: 10px;
@@ -83,6 +86,7 @@
     </select>
   </div>
   <div id="count"></div>
+  <div id="status"></div>
 </header>
 <main id="list"><div class="empty">Loading…</div></main>
 <script>
@@ -209,6 +213,23 @@ async function watched(id) {
   await post("/watched", { id, watched: !!n.watched_at });
 }
 
+function renderStatus(s) {
+  const el = document.getElementById("status");
+  if (!s) return;
+  if (s.alarms && s.alarms.length) {
+    el.className = "alarm";
+    el.textContent = "⚠ " + s.alarms.join(" · ");
+  } else {
+    const bits = [];
+    if (s.mtd_cost_usd != null) bits.push("$" + Number(s.mtd_cost_usd).toFixed(2) + " MTD");
+    if (s.supadata) bits.push("supadata " + s.supadata.mtd_calls + "/" + s.supadata.allotment);
+    if (s.drift && s.drift.detail) bits.push(s.drift.breach ? "drift: watch" : "drift ok");
+    if (!bits.length) return;
+    el.className = "quiet";
+    el.textContent = "✓ " + bits.join(" · ");
+  }
+}
+
 function bindFilter(sel, prop) {
   const el = document.getElementById(sel);
   el.value = state[prop] || "";
@@ -234,6 +255,7 @@ async function load() {
     return;
   }
   const data = await res.json();
+  renderStatus(data.status);
   all = (data.nuggets || []).map(n => ({
     ...n,
     channelLabel: n.yt_videos?.yt_channels?.label || n.yt_videos?.channel_id || "?",
