@@ -68,6 +68,7 @@
     border-radius: 8px; padding: 7px 12px; font-size: 13px;
   }
   .wtoggle.on { color: var(--good); border-color: var(--good); }
+  .rnote { margin-top: 8px; font-size: 12px; color: var(--faint); }
   .empty { color: var(--faint); text-align: center; padding: 40px 0; }
 </style>
 </head>
@@ -79,6 +80,7 @@
     <select id="fDomain"><option value="">domain</option></select>
     <select id="fType"><option value="">type</option></select>
     <select id="fState">
+      <option value="open">open</option>
       <option value="">any state</option>
       <option value="unrated">unrated</option>
       <option value="unwatched">unwatched</option>
@@ -95,11 +97,18 @@
 const BASE = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-review";
 const KEY = new URLSearchParams(location.search).get("key");
 const MODES = [["comfort","Comfort"],["stretch","Stretch"],["newest","Newest"],["queue","Queue"]];
+// yt_nuggets.rating column comment is the source of truth for this scale.
+const SCALE = { 1: "never gonna look", 2: "unlikely to use",
+  3: "neutral / did not regret", 4: "good", 5: "outstanding" };
 let all = [], slope = 0, intercept = 0;
 let state = Object.assign(
-  { mode: "comfort", channel: "", domain: "", type: "", vstate: "" },
+  { mode: "comfort", channel: "", domain: "", type: "", vstate: "open" },
   JSON.parse(localStorage.getItem("ytr") || "{}"));
 let openId = null;
+// Cards mutated while on screen keep their spot (dimmed) even once they stop
+// passing the filters, so a rate or watch never yanks the card mid-interaction.
+// Cleared on any mode/filter change, so the views stay honest.
+let pinned = new Set();
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g,
@@ -127,15 +136,17 @@ function regress() {
 }
 
 function visible() {
-  let v = all.slice();
-  if (state.channel) v = v.filter(n => n.channelLabel === state.channel);
-  if (state.domain) v = v.filter(n => n.domain === state.domain);
-  if (state.type) v = v.filter(n => n.nugget_type === state.type);
-  if (state.vstate === "unrated") v = v.filter(n => n.rating == null);
-  if (state.vstate === "unwatched") v = v.filter(n => !n.watched_at);
-  if (state.vstate === "watched") v = v.filter(n => n.watched_at);
+  const pass = (n) =>
+    (!state.channel || n.channelLabel === state.channel) &&
+    (!state.domain || n.domain === state.domain) &&
+    (!state.type || n.nugget_type === state.type) &&
+    (state.vstate !== "open" || n.rating == null || !n.watched_at) &&
+    (state.vstate !== "unrated" || n.rating == null) &&
+    (state.vstate !== "unwatched" || !n.watched_at) &&
+    (state.vstate !== "watched" || n.watched_at) &&
+    (state.mode !== "queue" || (n.rating >= 4 && !n.watched_at));
+  const v = all.filter(n => pass(n) || pinned.has(n.id));
   if (state.mode === "queue") {
-    v = v.filter(n => n.rating >= 4 && !n.watched_at);
     v.sort((a,b) => (b.rating - a.rating) || (b.personal_score - a.personal_score));
   } else if (state.mode === "comfort") {
     v.sort((a,b) => b.personal_score - a.personal_score);
@@ -181,17 +192,30 @@ function card(n) {
       '<div class="content">' + esc(n.content) + "</div>" +
       (n.rationale ? '<div class="rationale">' + esc(n.rationale) + "</div>" : "") +
       '<div class="actions">' +
-        '<a class="watch" target="_blank" rel="noopener" href="' + link + '">' + watchLabel + "</a>" +
+        '<a class="watch" target="_blank" rel="noopener" href="' + link + '" onclick="watchClick(\'' + n.id + '\')">' + watchLabel + "</a>" +
         '<div class="stars">' + [1,2,3,4,5].map(k =>
-          '<button class="' + (n.rating >= k ? "lit" : "") + '" onclick="rate(\'' + n.id + '\',' + k + ')">&#9733;</button>'
+          '<button title="' + k + ' — ' + SCALE[k] + '" class="' + (n.rating >= k ? "lit" : "") + '" onclick="rate(\'' + n.id + '\',' + k + ')">&#9733;</button>'
         ).join("") + "</div>" +
         '<button class="wtoggle' + (n.watched_at ? " on" : "") + '" onclick="watched(\'' + n.id + '\')">' +
           (n.watched_at ? "watched &#10003;" : "mark watched") + "</button>" +
       "</div>" +
+      '<div class="rnote">' + rnote(n) + "</div>" +
     "</div></div>";
 }
 
-function setMode(m) { state.mode = m; save(); render(); }
+// Legend under the stars: before watching the stars rate the nugget (the
+// abstract); after watching, the same stars become the video rating.
+function rnote(n) {
+  if (!n.rating) {
+    return n.watched_at
+      ? "watched — rate the video to close it out"
+      : "stars rate the nugget &middot; 4&ndash;5 queues it &middot; re-rate after watching";
+  }
+  return "&#9733;" + n.rating + " &mdash; " + SCALE[n.rating] +
+    (n.rating >= 4 && !n.watched_at ? " &middot; in queue" : "");
+}
+
+function setMode(m) { pinned.clear(); state.mode = m; save(); render(); }
 function toggle(id) { openId = openId === id ? null : id; render(); }
 
 async function post(path, body) {
@@ -204,13 +228,24 @@ async function post(path, body) {
 async function rate(id, k) {
   const n = all.find(x => x.id === id);
   const next = n.rating === k ? null : k; // tap the same star again to clear
-  n.rating = next; render();
+  n.rating = next; pinned.add(id); render();
   await post("/rate", { id, rating: next });
 }
 async function watched(id) {
   const n = all.find(x => x.id === id);
-  n.watched_at = n.watched_at ? null : new Date().toISOString(); render();
+  n.watched_at = n.watched_at ? null : new Date().toISOString();
+  pinned.add(id); render();
   await post("/watched", { id, watched: !!n.watched_at });
+}
+// The Watch link also marks the nugget watched. The re-render is deferred a
+// tick — replacing the anchor mid-click would cancel the new-tab navigation.
+async function watchClick(id) {
+  const n = all.find(x => x.id === id);
+  if (n.watched_at) return; // already watched: just follow the link
+  n.watched_at = new Date().toISOString();
+  pinned.add(id);
+  setTimeout(render, 0);
+  await post("/watched", { id, watched: true });
 }
 
 function renderStatus(s) {
@@ -233,7 +268,7 @@ function renderStatus(s) {
 function bindFilter(sel, prop) {
   const el = document.getElementById(sel);
   el.value = state[prop] || "";
-  el.onchange = () => { state[prop] = el.value; save(); render(); };
+  el.onchange = () => { pinned.clear(); state[prop] = el.value; save(); render(); };
 }
 
 async function load() {
