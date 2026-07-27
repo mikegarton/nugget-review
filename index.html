@@ -32,6 +32,11 @@
     border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; font-size: 13px;
     max-width: 40vw;
   }
+  .filters button {
+    flex: none; background: var(--card); color: var(--dim);
+    border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; font-size: 13px;
+  }
+  .filters button.on { color: var(--accent); border-color: var(--accent); }
   #count { font-size: 12px; color: var(--faint); margin-top: 5px; }
   #status { font-size: 12px; margin-top: 4px; display: none; }
   #status.quiet { display: block; color: var(--good); }
@@ -69,6 +74,17 @@
   }
   .wtoggle.on { color: var(--good); border-color: var(--good); }
   .rnote { margin-top: 8px; font-size: 12px; color: var(--faint); }
+  .ghead {
+    background: var(--card2); border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 12px;
+  }
+  .ghead .gtitle { font-weight: 600; cursor: pointer; }
+  .gmeta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 5px; font-size: 12px; color: var(--dim); }
+  .gwatch { padding: 5px 10px; font-size: 13px; }
+  .gcards {
+    display: flex; flex-direction: column; gap: 6px;
+    margin-left: 10px; border-left: 2px solid var(--line); padding-left: 8px;
+  }
   .empty { color: var(--faint); text-align: center; padding: 40px 0; }
 </style>
 </head>
@@ -79,6 +95,7 @@
     <select id="fChannel"><option value="">channel</option></select>
     <select id="fDomain"><option value="">domain</option></select>
     <select id="fType"><option value="">type</option></select>
+    <button id="gToggle" title="group nuggets by video">by video</button>
     <select id="fState">
       <option value="open">open</option>
       <option value="">any state</option>
@@ -102,9 +119,10 @@ const SCALE = { 1: "never gonna look", 2: "unlikely to use",
   3: "neutral / did not regret", 4: "good", 5: "outstanding" };
 let all = [], slope = 0, intercept = 0;
 let state = Object.assign(
-  { mode: "comfort", channel: "", domain: "", type: "", vstate: "open" },
+  { mode: "comfort", channel: "", domain: "", type: "", vstate: "open", group: true },
   JSON.parse(localStorage.getItem("ytr") || "{}"));
 let openId = null;
+let collapsed = new Set(); // collapsed video groups; per page-load, like openId
 // Cards mutated while on screen keep their spot (dimmed) even once they stop
 // passing the filters, so a rate or watch never yanks the card mid-interaction.
 // Cleared on any mode/filter change, so the views stay honest.
@@ -165,9 +183,70 @@ function render() {
   const v = visible();
   document.getElementById("count").textContent =
     v.length + " nuggets" + (state.mode === "stretch" ? " — sorted by how much the mentor disagrees with your taste" : "");
+  document.getElementById("gToggle").className = state.group ? "on" : "";
   const list = document.getElementById("list");
   if (!v.length) { list.innerHTML = '<div class="empty">Nothing here.</div>'; return; }
-  list.innerHTML = v.map(card).join("");
+  list.innerHTML = state.group ? grouped(v) : v.map(card).join("");
+}
+
+// Group multi-nugget videos under a header; singletons stay plain cards.
+// Group order = first appearance in the mode-sorted list (best nugget leads);
+// within a group, nuggets run in timestamp order — the video's storyline.
+function grouped(v) {
+  const byVid = new Map();
+  for (const n of v) {
+    if (!byVid.has(n.video_id)) byVid.set(n.video_id, []);
+    byVid.get(n.video_id).push(n);
+  }
+  const out = [], done = new Set();
+  for (const n of v) {
+    if (done.has(n.video_id)) continue;
+    done.add(n.video_id);
+    const g = byVid.get(n.video_id);
+    if (g.length === 1) { out.push(card(n)); continue; }
+    out.push(ghead(n, g.length));
+    if (!collapsed.has(n.video_id)) {
+      const items = g.slice().sort((a, b) => (a.start_seconds ?? 1e9) - (b.start_seconds ?? 1e9));
+      out.push('<div class="gcards">' + items.map(card).join("") + "</div>");
+    }
+  }
+  return out.join("");
+}
+
+function fmtDur(s) {
+  const m = Math.round(s / 60);
+  return m >= 60 ? Math.floor(m / 60) + "h " + (m % 60) + "m" : m + " min";
+}
+
+function ghead(n, count) {
+  const isC = collapsed.has(n.video_id);
+  const dur = n.durationSeconds ? " in " + fmtDur(n.durationSeconds) : "";
+  return '<div class="ghead">' +
+    '<div class="gtitle" onclick="toggleGroup(\'' + n.video_id + '\')">' +
+      (isC ? "&#9656; " : "&#9662; ") + esc(n.videoTitle || n.channelLabel) + "</div>" +
+    '<div class="gmeta">' +
+      "<b>" + esc(n.channelLabel) + "</b>" +
+      "<span>" + fmtD(n.publishedAt || n.created_at) + "</span>" +
+      '<span class="chip">' + count + " nuggets" + dur + "</span>" +
+      '<a class="watch gwatch" target="_blank" rel="noopener" href="https://www.youtube.com/watch?v=' + n.video_id +
+        '" onclick="watchAllClick(\'' + n.video_id + '\')">&#9654; Watch video</a>' +
+    "</div></div>";
+}
+
+function toggleGroup(vid) {
+  collapsed.has(vid) ? collapsed.delete(vid) : collapsed.add(vid);
+  render();
+}
+
+// Header Watch covers every nugget's timestamp, so mark the whole group
+// watched (pinned in place; per-card toggles undo any of them).
+async function watchAllClick(vid) {
+  const group = all.filter(x => x.video_id === vid && !x.watched_at);
+  if (!group.length) return;
+  const ts = new Date().toISOString();
+  for (const n of group) { n.watched_at = ts; pinned.add(n.id); }
+  setTimeout(render, 0);
+  for (const n of group) await post("/watched", { id: n.id, watched: true });
 }
 
 function card(n) {
@@ -296,6 +375,7 @@ async function load() {
     channelLabel: n.yt_videos?.yt_channels?.label || n.yt_videos?.channel_id || "?",
     videoTitle: n.yt_videos?.title || "",
     publishedAt: n.yt_videos?.published_at,
+    durationSeconds: n.yt_videos?.duration_seconds ?? null,
   }));
   regress();
   const fill = (sel, values) => {
@@ -311,6 +391,9 @@ async function load() {
   bindFilter("fDomain", "domain");
   bindFilter("fType", "type");
   bindFilter("fState", "vstate");
+  document.getElementById("gToggle").onclick = () => {
+    state.group = !state.group; save(); render();
+  };
   render();
 }
 load();

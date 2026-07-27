@@ -36,6 +36,12 @@ Bookmark: `https://mikegarton.github.io/nugget-review/?key=<YT_REVIEW_KEY>`
 - State filter: **open** (default — everything not yet both rated and
   watched) · any state · unrated · unwatched · watched. Plus channel /
   domain / type filters. Choices persist in `localStorage`.
+- **By video** toggle (default on): multi-nugget videos group under a
+  collapsible header — "X nuggets in Y" with channel, date, and a Watch
+  button for the whole video (marks every nugget in the group watched).
+  Groups sort by their best nugget in the current mode; nuggets within a
+  group run in timestamp order. Singletons stay plain cards. Duration
+  shows once the video's `duration_seconds` is enriched.
 
 Cards you rate or watch stay **pinned in place** (dimmed) until the next
 mode/filter change or reload, so acting on a card never yanks it out of the
