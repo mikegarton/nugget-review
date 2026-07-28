@@ -25,7 +25,10 @@ Bookmark: `https://mikegarton.github.io/nugget-review/?key=<YT_REVIEW_KEY>`
    revise or confirm.
 4. A card drops out of the **open** view once it is both rated and watched,
    or as soon as it is rated 1–2 (a low rating dismisses it, watched or
-   not). Surface it again via the state filter.
+   not). Dismissals are permanent at the API level: after the next reload,
+   1–2★ nuggets are never shipped to the app again — 2★ rows stay in the
+   database as facts, 1★ rows are deleted outright by the processor after
+   a 24 h grace window (un-rate within a day to save a mis-tap).
 
 ## Modes and filters
 

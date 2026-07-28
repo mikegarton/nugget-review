@@ -126,7 +126,7 @@ const BASE = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-review";
 const KEY = new URLSearchParams(location.search).get("key");
 const MODES = [["comfort","Comfort"],["stretch","Stretch"],["newest","Newest"],["queue","Queue"]];
 // yt_nuggets.rating column comment is the source of truth for this scale.
-const SCALE = { 1: "never gonna look", 2: "unlikely to use",
+const SCALE = { 1: "never gonna look (deleted after a day)", 2: "unlikely to use",
   3: "neutral / did not regret", 4: "good", 5: "outstanding" };
 let all = [], slope = 0, intercept = 0;
 let channelHype = new Map(); // label -> avg hype level, from the review payload
