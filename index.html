@@ -56,7 +56,7 @@
   .body { display: none; margin-top: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
   .card.open .body { display: block; }
   .content { white-space: pre-wrap; }
-  .rationale { margin-top: 8px; font-size: 12.5px; color: var(--faint); }
+  .rationale { margin-top: 8px; font-size: 15px; color: var(--gold); }
   .actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
   .watch {
     display: inline-block; background: var(--accent); color: #08131f;
@@ -68,6 +68,8 @@
     padding: 2px 4px; line-height: 1;
   }
   .stars button.lit { color: var(--gold); }
+  .chip.res { font-size: 14px; color: var(--gold); }
+  .gstars button { font-size: 20px; padding: 2px 3px; }
   .wtoggle {
     background: var(--card2); border: 1px solid var(--line); color: var(--dim);
     border-radius: 8px; padding: 7px 12px; font-size: 13px;
@@ -79,6 +81,7 @@
     padding: 8px 12px;
   }
   .ghead .gtitle { font-weight: 600; cursor: pointer; }
+  .ghead .ytitle { margin-top: 2px; font-size: 13px; color: var(--ink); }
   .gmeta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 5px; font-size: 12px; color: var(--dim); }
   .gwatch { padding: 5px 10px; font-size: 13px; }
   .gcards {
@@ -95,6 +98,14 @@
     <select id="fChannel"><option value="">channel</option></select>
     <select id="fDomain"><option value="">domain</option></select>
     <select id="fType"><option value="">type</option></select>
+    <select id="fAge">
+      <option value="">any age</option>
+      <option value="2">&#8804; 2 days</option>
+      <option value="10">&#8804; 10 days</option>
+      <option value="60">&#8804; 2 months</option>
+      <option value="180">&#8804; 6 months</option>
+      <option value="365">&#8804; 1 year</option>
+    </select>
     <button id="gToggle" title="group nuggets by video">by video</button>
     <select id="fState">
       <option value="open">open</option>
@@ -118,8 +129,9 @@ const MODES = [["comfort","Comfort"],["stretch","Stretch"],["newest","Newest"],[
 const SCALE = { 1: "never gonna look", 2: "unlikely to use",
   3: "neutral / did not regret", 4: "good", 5: "outstanding" };
 let all = [], slope = 0, intercept = 0;
+let channelHype = new Map(); // label -> avg hype level, from the review payload
 let state = Object.assign(
-  { mode: "comfort", channel: "", domain: "", type: "", vstate: "open", group: true },
+  { mode: "comfort", channel: "", domain: "", type: "", vstate: "open", age: "", group: true },
   JSON.parse(localStorage.getItem("ytr") || "{}"));
 let openId = null;
 let collapsed = new Set(); // collapsed video groups; per page-load, like openId
@@ -154,11 +166,15 @@ function regress() {
 }
 
 function visible() {
+  // "open" = still actionable: not yet both rated and watched, and not
+  // dismissed with a low rating (1-2 hides it, watched or not).
   const pass = (n) =>
     (!state.channel || n.channelLabel === state.channel) &&
     (!state.domain || n.domain === state.domain) &&
     (!state.type || n.nugget_type === state.type) &&
-    (state.vstate !== "open" || n.rating == null || !n.watched_at) &&
+    (!state.age || Date.now() - new Date(n.publishedAt || n.created_at) <= state.age * 86400000) &&
+    (state.vstate !== "open" ||
+      ((n.rating == null || !n.watched_at) && !(n.rating != null && n.rating <= 2))) &&
     (state.vstate !== "unrated" || n.rating == null) &&
     (state.vstate !== "unwatched" || !n.watched_at) &&
     (state.vstate !== "watched" || n.watched_at) &&
@@ -204,7 +220,7 @@ function grouped(v) {
     done.add(n.video_id);
     const g = byVid.get(n.video_id);
     if (g.length === 1) { out.push(card(n)); continue; }
-    out.push(ghead(n, g.length));
+    out.push(ghead(n, g));
     if (!collapsed.has(n.video_id)) {
       const items = g.slice().sort((a, b) => (a.start_seconds ?? 1e9) - (b.start_seconds ?? 1e9));
       out.push('<div class="gcards">' + items.map(card).join("") + "</div>");
@@ -218,16 +234,31 @@ function fmtDur(s) {
   return m >= 60 ? Math.floor(m / 60) + "h " + (m % 60) + "m" : m + " min";
 }
 
-function ghead(n, count) {
+function ghead(n, g) {
   const isC = collapsed.has(n.video_id);
   const dur = n.durationSeconds ? " in " + fmtDur(n.durationSeconds) : "";
+  // Header stars light up to the group's lowest rating (unrated counts as 0),
+  // so a fully-rated group reads at a glance and a mixed one stays dark.
+  const gmin = Math.min(...g.map(x => x.rating || 0));
+  // Humble title leads: the processor's plain_title when scored, else the lead
+  // nugget's headline (pre-hype videos). The channel's verbatim title sits
+  // below it — full contrast, just smaller — with its hype level as a chip.
+  const humble = n.plainTitle || n.headline || n.videoTitle || n.channelLabel;
+  const hype = n.hypeLevel != null
+    ? '<span class="chip">hype ' + (n.hypeLevel > 0 ? "+" : "") + n.hypeLevel + "</span>" : "";
   return '<div class="ghead">' +
     '<div class="gtitle" onclick="toggleGroup(\'' + n.video_id + '\')">' +
-      (isC ? "&#9656; " : "&#9662; ") + esc(n.videoTitle || n.channelLabel) + "</div>" +
+      (isC ? "&#9656; " : "&#9662; ") + esc(humble) + "</div>" +
+    (n.videoTitle && n.videoTitle !== humble
+      ? '<div class="ytitle">' + esc(n.videoTitle) + "</div>" : "") +
     '<div class="gmeta">' +
       "<b>" + esc(n.channelLabel) + "</b>" +
       "<span>" + fmtD(n.publishedAt || n.created_at) + "</span>" +
-      '<span class="chip">' + count + " nuggets" + dur + "</span>" +
+      '<span class="chip">' + g.length + " nuggets" + dur + "</span>" + hype +
+      '<div class="stars gstars">' + [1,2,3,4,5].map(k =>
+        '<button title="' + k + ' — ' + SCALE[k] + ' (rates every unrated nugget)" class="' +
+          (gmin >= k ? "lit" : "") + '" onclick="rateAll(\'' + n.video_id + '\',' + k + ')">&#9733;</button>'
+      ).join("") + "</div>" +
       '<a class="watch gwatch" target="_blank" rel="noopener" href="https://www.youtube.com/watch?v=' + n.video_id +
         '" onclick="watchAllClick(\'' + n.video_id + '\')">&#9654; Watch video</a>' +
     "</div></div>";
@@ -249,13 +280,24 @@ async function watchAllClick(vid) {
   for (const n of group) await post("/watched", { id: n.id, watched: true });
 }
 
+// Header stars rate every *unrated* nugget in the group; individual ratings
+// are never overwritten. 4-5 queues the lot; 1-2 closes it out under "open" —
+// no pinning, so a low rating makes the group disappear immediately.
+async function rateAll(vid, k) {
+  const group = all.filter(x => x.video_id === vid && x.rating == null);
+  if (!group.length) return;
+  for (const n of group) n.rating = k;
+  render();
+  for (const n of group) await post("/rate", { id: n.id, rating: k });
+}
+
 function card(n) {
   const open = n.id === openId;
   const link = "https://www.youtube.com/watch?v=" + n.video_id +
     (n.start_seconds != null ? "&t=" + n.start_seconds + "s" : "");
   const watchLabel = n.start_seconds != null ? "&#9654; Watch at " + fmtT(n.start_seconds) : "&#9654; Watch video";
   const res = state.mode === "stretch"
-    ? ' <span class="chip">mentor +' + residual(n).toFixed(0) + "</span>" : "";
+    ? ' <span class="chip res">mentor +' + residual(n).toFixed(0) + "</span>" : "";
   return '<div class="card' + (open ? " open" : "") + (n.watched_at ? " watched" : "") + '">' +
     '<div class="hl" onclick="toggle(\'' + n.id + '\')">' + esc(n.headline || n.content.slice(0, 110)) + "</div>" +
     '<div class="meta">' +
@@ -374,23 +416,32 @@ async function load() {
     ...n,
     channelLabel: n.yt_videos?.yt_channels?.label || n.yt_videos?.channel_id || "?",
     videoTitle: n.yt_videos?.title || "",
+    plainTitle: n.yt_videos?.plain_title || "",
+    hypeLevel: n.yt_videos?.hype_level ?? null,
     publishedAt: n.yt_videos?.published_at,
     durationSeconds: n.yt_videos?.duration_seconds ?? null,
   }));
+  channelHype = new Map((data.channel_hype || []).map(c => [c.label, c.avg_hype]));
   regress();
-  const fill = (sel, values) => {
+  const fill = (sel, values, label) => {
     const el = document.getElementById(sel);
     [...new Set(values.filter(Boolean))].sort().forEach(vv => {
-      const o = document.createElement("option"); o.value = vv; o.textContent = vv; el.appendChild(o);
+      const o = document.createElement("option"); o.value = vv;
+      o.textContent = label ? label(vv) : vv; el.appendChild(o);
     });
   };
-  fill("fChannel", all.map(n => n.channelLabel));
+  // Channel options carry the running hype average — the weeding signal.
+  fill("fChannel", all.map(n => n.channelLabel), (vv) => {
+    const h = channelHype.get(vv);
+    return h == null ? vv : vv + " (" + (h > 0 ? "+" : "") + Number(h).toFixed(1) + ")";
+  });
   fill("fDomain", all.map(n => n.domain));
   fill("fType", all.map(n => n.nugget_type));
   bindFilter("fChannel", "channel");
   bindFilter("fDomain", "domain");
   bindFilter("fType", "type");
   bindFilter("fState", "vstate");
+  bindFilter("fAge", "age");
   document.getElementById("gToggle").onclick = () => {
     state.group = !state.group; save(); render();
   };
