@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nugget ops</title>
+<style>
+  :root {
+    --bg: #101114; --card: #1a1c21; --card2: #22252c; --line: #2c3038;
+    --ink: #e8e8e6; --dim: #9a9da5; --accent: #5aa8f0; --gold: #e0b34e;
+    --good: #6fc48d;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 12px 10px 60px; max-width: 900px; margin: 0 auto;
+  }
+  h1 { font-size: 20px; margin-bottom: 2px; }
+  .sub { color: var(--dim); font-size: 13px; margin-bottom: 14px; }
+  h2 { font-size: 16px; margin: 22px 0 8px; }
+  .strip { color: var(--good); font-size: 13px; margin-bottom: 4px; }
+  .cards { display: flex; flex-wrap: wrap; gap: 8px; }
+  .bcard {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 12px; font-size: 13px; min-width: 220px;
+  }
+  .bcard b { font-size: 15px; }
+  .bcard .row { color: var(--dim); margin-top: 3px; }
+  .bar { height: 6px; background: var(--card2); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  .twrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; white-space: nowrap; }
+  th, td { text-align: right; padding: 7px 9px; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--dim); cursor: pointer; user-select: none; position: sticky; top: 0; background: var(--card); }
+  tr:last-child td { border-bottom: none; }
+  td { font-variant-numeric: tabular-nums; }
+  .hot { color: var(--gold); }
+  select {
+    background: var(--card); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 8px; padding: 4px 6px; font-size: 13px; margin-bottom: 8px;
+  }
+  .note { color: var(--dim); font-size: 12.5px; margin-top: 6px; }
+  .empty { color: var(--dim); padding: 20px; text-align: center; }
+</style>
+</head>
+<body>
+<h1>Nugget ops</h1>
+<div class="sub">Channel economics and campaign yields. Read-only — campaigns are edited in the SQL editor.</div>
+<div id="strip" class="strip"></div>
+
+<h2>Campaign budgets</h2>
+<div id="budgets" class="cards"><div class="empty">Loading…</div></div>
+
+<h2>Campaign yield by query</h2>
+<div class="twrap"><table id="yield"></table></div>
+<div class="note">found → screened out / promoted → processed → nuggets → your ratings.
+A query with finds but no ≥4★ after a couple of weeks is a candidate for retirement
+(<code>update yt_campaign_queries set active = false …</code>).</div>
+
+<h2>Channel economics — lifetime</h2>
+<div class="twrap"><table id="totals"></table></div>
+<div class="note">Cost = Claude tokens + prorated Supadata credits, from the call log.
+Nugget counts are surviving nuggets (1★ rows are purged). Disabled channels are
+campaign discoveries, not part of the trusted poll list. Tap a column header to sort.</div>
+
+<h2>Channel economics — by month</h2>
+<select id="monthSel"></select>
+<div class="twrap"><table id="monthly"></table></div>
+
+<script>
+const BASE = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-review";
+const KEY = new URLSearchParams(location.search).get("key");
+let ops = null;
+let sortKey = "cost_usd", sortDir = -1;
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g,
+    (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+const fmt = (v, d) => v == null ? "—" : Number(v).toFixed(d);
+
+const TOTAL_COLS = [
+  ["label", "channel", null],
+  ["cost_usd", "$", 2],
+  ["supadata_calls", "transcripts", 0],
+  ["videos_processed", "videos", 0],
+  ["transcript_minutes", "minutes", 0],
+  ["nuggets", "nuggets", 0],
+  ["rated_ge4", "≥4★", 0],
+  ["five_star", "5★", 0],
+  ["usd_per_nugget", "$/nugget", 3],
+  ["usd_per_five_star", "$/5★", 2],
+  ["nuggets_per_transcript_minute", "nug/min", 3],
+];
+
+function renderTotals() {
+  const rows = (ops.channel_totals || []).slice().sort((a, b) => {
+    const x = a[sortKey], y = b[sortKey];
+    if (x == null && y == null) return 0;
+    if (x == null) return 1;
+    if (y == null) return -1;
+    return (typeof x === "string" ? x.localeCompare(y) : x - y) * sortDir;
+  });
+  document.getElementById("totals").innerHTML =
+    "<tr>" + TOTAL_COLS.map(([k, label]) =>
+      '<th onclick="sortBy(\'' + k + '\')">' + label + (k === sortKey ? (sortDir < 0 ? " ▾" : " ▴") : "") + "</th>"
+    ).join("") + "</tr>" +
+    rows.map(r => "<tr>" + TOTAL_COLS.map(([k, , d]) => {
+      if (k === "label") {
+        return "<td>" + esc(r.label) + (r.enabled === false ? ' <span class="hot">(campaign)</span>' : "") + "</td>";
+      }
+      return "<td>" + (d == null ? esc(r[k]) : fmt(r[k], d)) + "</td>";
+    }).join("") + "</tr>").join("");
+}
+function sortBy(k) {
+  sortDir = k === sortKey ? -sortDir : (k === "label" ? 1 : -1);
+  sortKey = k;
+  renderTotals();
+}
+
+function renderMonthly() {
+  const sel = document.getElementById("monthSel");
+  const rows = (ops.channel_monthly || []).filter(r => !sel.value || r.month === sel.value);
+  const cols = TOTAL_COLS.filter(([k]) => k !== "label");
+  document.getElementById("monthly").innerHTML =
+    "<tr><th>channel</th><th>month</th>" + cols.map(([, label]) => "<th>" + label + "</th>").join("") + "</tr>" +
+    (rows.length ? rows.map(r =>
+      "<tr><td>" + esc(r.label) + "</td><td>" + esc(String(r.month).slice(0, 7)) + "</td>" +
+      cols.map(([k, , d]) => "<td>" + (d == null ? esc(r[k]) : fmt(r[k], d)) + "</td>").join("") + "</tr>"
+    ).join("") : '<tr><td colspan="12" class="empty">No rows.</td></tr>');
+}
+
+function render() {
+  const m = ops.month;
+  if (m) {
+    document.getElementById("strip").textContent =
+      "✓ $" + fmt(m.mtd_cost_usd, 2) + " MTD · supadata " + m.cycle_supadata_calls + "/" +
+      m.supadata_allotment + " this cycle (resets " + String(m.supadata_cycle_end).slice(0, 10) + ")";
+  }
+
+  const budgets = ops.campaign_budget || [];
+  document.getElementById("budgets").innerHTML = budgets.length ? budgets.map(b => {
+    const pct = Math.min(100, 100 * b.supadata_used_cycle / Math.max(1, b.supadata_cap_per_cycle));
+    return '<div class="bcard"><b>' + esc(b.name) + "</b>" +
+      '<div class="row">' + esc(b.status) + " · tier " + b.tier + " · " +
+        b.videos_pending + " pending · " + b.videos_processed + " processed</div>" +
+      '<div class="row">transcripts: ' + b.supadata_used_cycle + " / " + b.supadata_cap_per_cycle +
+        " this cycle · promotes ≤" + b.daily_video_cap + "/day</div>" +
+      '<div class="bar"><i style="width:' + pct + '%"></i></div></div>';
+  }).join("") : '<div class="empty">No campaigns.</div>';
+
+  const y = ops.campaign_yield || [];
+  document.getElementById("yield").innerHTML =
+    "<tr><th>query</th><th>found</th><th>screened out</th><th>promoted</th><th>processed</th><th>nuggets</th><th>≥4★</th><th>5★</th></tr>" +
+    (y.length ? y.map(r =>
+      "<tr><td>" + esc(r.query) + (r.active ? "" : ' <span class="hot">(retired)</span>') + "</td><td>" +
+      [r.found, r.screened_out, r.promoted, r.processed, r.nuggets, r.rated_ge4, r.five_star].join("</td><td>") +
+      "</td></tr>").join("") : '<tr><td colspan="8" class="empty">No campaign data yet.</td></tr>');
+
+  renderTotals();
+
+  const months = [...new Set((ops.channel_monthly || []).map(r => r.month))].sort().reverse();
+  const sel = document.getElementById("monthSel");
+  sel.innerHTML = '<option value="">all months</option>' + months.map(m =>
+    '<option value="' + esc(m) + '">' + esc(String(m).slice(0, 7)) + "</option>").join("");
+  if (months.length) sel.value = months[0];
+  sel.onchange = renderMonthly;
+  renderMonthly();
+}
+
+async function load() {
+  if (!KEY) {
+    document.body.innerHTML = '<div class="empty">Missing ?key= — open from your bookmark (same key as the viewer).</div>';
+    return;
+  }
+  let res;
+  try {
+    res = await fetch(BASE + "/ops?key=" + encodeURIComponent(KEY));
+  } catch (e) {
+    document.getElementById("budgets").innerHTML = '<div class="empty">Could not reach the API.</div>';
+    return;
+  }
+  if (!res.ok) {
+    document.getElementById("budgets").innerHTML = '<div class="empty">API error ' + res.status + "</div>";
+    return;
+  }
+  ops = await res.json();
+  render();
+}
+load();
+</script>
+</body>
+</html>

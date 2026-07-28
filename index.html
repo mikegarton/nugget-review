@@ -125,7 +125,7 @@
 // function below; the key lives only in the bookmark's ?key= parameter.
 const BASE = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-review";
 const KEY = new URLSearchParams(location.search).get("key");
-const MODES = [["comfort","Comfort"],["stretch","Stretch"],["newest","Newest"],["queue","Queue"]];
+const MODES = [["comfort","Comfort"],["stretch","Stretch"],["newest","Newest"],["queue","Queue"],["prospect","Prospect"]];
 // yt_nuggets.rating column comment is the source of truth for this scale.
 const SCALE = { 1: "never gonna look (deleted after a day)", 2: "unlikely to use",
   3: "neutral / did not regret", 4: "good", 5: "outstanding" };
@@ -169,7 +169,10 @@ function regress() {
 function visible() {
   // "open" = still actionable: not yet both rated and watched, and not
   // dismissed with a low rating (1-2 hides it, watched or not).
+  // Prospect quarantine: campaign nuggets appear ONLY in Prospect mode, so
+  // keyword-mined material never dilutes the trusted-channel views.
   const pass = (n) =>
+    (state.mode === "prospect" ? n.campaignId != null : n.campaignId == null) &&
     (!state.channel || n.channelLabel === state.channel) &&
     (!state.domain || n.domain === state.domain) &&
     (!state.type || n.nugget_type === state.type) &&
@@ -183,7 +186,7 @@ function visible() {
   const v = all.filter(n => pass(n) || pinned.has(n.id));
   if (state.mode === "queue") {
     v.sort((a,b) => (b.rating - a.rating) || (b.personal_score - a.personal_score));
-  } else if (state.mode === "comfort") {
+  } else if (state.mode === "comfort" || state.mode === "prospect") {
     v.sort((a,b) => b.personal_score - a.personal_score);
   } else if (state.mode === "stretch") {
     v.sort((a,b) => residual(b) - residual(a));
@@ -199,7 +202,8 @@ function render() {
   ).join("");
   const v = visible();
   document.getElementById("count").textContent =
-    v.length + " nuggets" + (state.mode === "stretch" ? " — sorted by how much the mentor disagrees with your taste" : "");
+    v.length + " nuggets" + (state.mode === "stretch" ? " — sorted by how much the mentor disagrees with your taste"
+      : state.mode === "prospect" ? " — keyword prospects: rate what you'd actually watch" : "");
   document.getElementById("gToggle").className = state.group ? "on" : "";
   const list = document.getElementById("list");
   if (!v.length) { list.innerHTML = '<div class="empty">Nothing here.</div>'; return; }
@@ -344,12 +348,16 @@ function card(n) {
 // Legend under the stars: before watching the stars rate the nugget (the
 // abstract); after watching, the same stars become the video rating.
 function rnote(n) {
+  // Campaign nuggets carry the standing reminder: stars keep ONE meaning
+  // everywhere — "I intend to watch this" — and ratings feed the campaign's
+  // per-query yield stats.
+  const pre = n.campaignId ? "prospect &middot; stars = would you actually watch it &middot; ratings teach the campaign<br>" : "";
   if (!n.rating) {
-    return n.watched_at
+    return pre + (n.watched_at
       ? "watched — rate the video to close it out"
-      : "stars rate the nugget &middot; 4&ndash;5 queues it &middot; re-rate after watching";
+      : "stars rate the nugget &middot; 4&ndash;5 queues it &middot; re-rate after watching");
   }
-  return "&#9733;" + n.rating + " &mdash; " + SCALE[n.rating] +
+  return pre + "&#9733;" + n.rating + " &mdash; " + SCALE[n.rating] +
     (n.rating >= 4 && !n.watched_at ? " &middot; in queue" : "");
 }
 
@@ -435,6 +443,7 @@ async function load() {
     videoTitle: n.yt_videos?.title || "",
     plainTitle: n.yt_videos?.plain_title || "",
     hypeLevel: n.yt_videos?.hype_level ?? null,
+    campaignId: n.yt_videos?.campaign_id ?? null,
     publishedAt: n.yt_videos?.published_at,
     durationSeconds: n.yt_videos?.duration_seconds ?? null,
   }));

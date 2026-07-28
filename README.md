@@ -60,6 +60,15 @@ Bookmark: `https://mikegarton.github.io/nugget-review/?key=<YT_REVIEW_KEY>`
   level to one decimal — the channel-weeding signal (server-side
   `yt_channel_hype` view, so it includes videos that yielded zero
   nuggets).
+- **Prospect** mode: nuggets from keyword campaigns (`yt-prospector`)
+  appear here and ONLY here — the trusted-channel views never see
+  them. Stars keep one meaning everywhere ("I intend to watch this");
+  the legend under the stars carries the standing reminder, and
+  ratings feed the campaign's per-query yield stats.
+- `ops.html` (same key): read-only ops page — Supadata cycle budget,
+  per-campaign burn, per-query yields, and channel economics
+  ($/nugget, $/5★, nuggets per transcript-minute, lifetime and by
+  month). Campaigns are edited in the SQL editor, not here.
 
 Cards you rate or watch stay **pinned in place** (dimmed) until the next
 mode/filter change or reload, so acting on a card never yanks it out of the
