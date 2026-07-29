@@ -65,10 +65,15 @@ Bookmark: `https://mikegarton.github.io/nugget-review/?key=<YT_REVIEW_KEY>`
   them. Stars keep one meaning everywhere ("I intend to watch this");
   the legend under the stars carries the standing reminder, and
   ratings feed the campaign's per-query yield stats.
-- `ops.html` (same key): read-only ops page — Supadata cycle budget,
-  per-campaign burn, per-query yields, and channel economics
-  ($/nugget, $/5★, nuggets per transcript-minute, lifetime and by
-  month). Campaigns are edited in the SQL editor, not here.
+- `ops.html` (same key): read-only ops page. **Burn rate** cards lead:
+  every metered budget (Supadata cycle, soft Claude $ budget, each
+  campaign cap) shown as used/quota with a pace ratio normalized by
+  elapsed period — blue &lt;0.5× · green ≤1× · yellow ≤1.3× · red
+  &gt;1.3×, tick marks "exactly on pace". Then per-query campaign
+  yields, channel economics ($/nugget, $/5★, nuggets per
+  transcript-minute, lifetime + monthly), and the live `yt_params`
+  knob table. Campaigns and knobs are edited in the SQL editor, not
+  here (control GUI later).
 
 Cards you rate or watch stay **pinned in place** (dimmed) until the next
 mode/filter change or reload, so acting on a card never yanks it out of the

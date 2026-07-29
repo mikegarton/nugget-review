@@ -8,7 +8,7 @@
   :root {
     --bg: #101114; --card: #1a1c21; --card2: #22252c; --line: #2c3038;
     --ink: #e8e8e6; --dim: #9a9da5; --accent: #5aa8f0; --gold: #e0b34e;
-    --good: #6fc48d;
+    --good: #6fc48d; --bad: #e0704e;
   }
   * { box-sizing: border-box; margin: 0; }
   body {
@@ -27,8 +27,16 @@
   }
   .bcard b { font-size: 15px; }
   .bcard .row { color: var(--dim); margin-top: 3px; }
-  .bar { height: 6px; background: var(--card2); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  .bar { height: 6px; background: var(--card2); border-radius: 3px; margin-top: 6px;
+         overflow: hidden; position: relative; }
   .bar i { display: block; height: 100%; background: var(--accent); }
+  .bar .tick { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--dim); }
+  .p-blue { color: var(--accent); }  .p-blue i { background: var(--accent); }
+  .p-green { color: var(--good); }   .p-green i { background: var(--good); }
+  .p-yellow { color: var(--gold); }  .p-yellow i { background: var(--gold); }
+  .p-red { color: var(--bad); }      .p-red i { background: var(--bad); }
+  .bcard .big { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .bcard .pace { font-size: 12.5px; font-weight: 600; }
   .twrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
   table { border-collapse: collapse; width: 100%; font-size: 13px; white-space: nowrap; }
   th, td { text-align: right; padding: 7px 9px; border-bottom: 1px solid var(--line); }
@@ -48,7 +56,13 @@
 <body>
 <h1>Nugget ops</h1>
 <div class="sub">Channel economics and campaign yields. Read-only — campaigns are edited in the SQL editor.</div>
-<div id="strip" class="strip"></div>
+<h2>Burn rate</h2>
+<div class="note" style="color:var(--dim);font-size:12.5px;border:none;padding:0;margin:0 0 8px">
+used ÷ quota, normalized by how much of the period has elapsed —
+<span class="p-blue">low</span> &lt;0.5× · <span class="p-green">on pace</span> ≤1× ·
+<span class="p-yellow">close</span> ≤1.3× · <span class="p-red">too fast</span> &gt;1.3×.
+The tick on each bar marks where "exactly on pace" would be right now.</div>
+<div id="burn" class="cards"><div class="empty">Loading…</div></div>
 
 <h2>Campaign budgets</h2>
 <div id="budgets" class="cards"><div class="empty">Loading…</div></div>
@@ -68,6 +82,14 @@ campaign discoveries, not part of the trusted poll list. Tap a column header to 
 <h2>Channel economics — by month</h2>
 <select id="monthSel"></select>
 <div class="twrap"><table id="monthly"></table></div>
+
+<h2>Knobs (yt_params)</h2>
+<div class="twrap"><table id="knobs"></table></div>
+<div class="note">Every tunable number the functions run on, live from the
+database. Edit in the SQL editor —
+<code>update yt_params set value = '…' where key = '…';</code> — and the next
+run picks it up, no redeploy. This table is the surface a future control GUI
+will edit.</div>
 
 <script>
 const BASE = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-review";
@@ -132,23 +154,73 @@ function renderMonthly() {
     ).join("") : '<tr><td colspan="12" class="empty">No rows.</td></tr>');
 }
 
+// Burn pace: (used/quota) / elapsed-fraction. <0.5 low · ≤1 on pace ·
+// ≤1.3 close · >1.3 too fast. The actionable question is always "at this
+// rate, do we blow the quota before it resets?"
+function paceOf(used, quota, elapsed) {
+  if (!quota || quota <= 0) return null;
+  return (used / quota) / Math.max(elapsed, 0.02);
+}
+function paceClass(r) {
+  return r == null ? "" : r < 0.5 ? "p-blue" : r <= 1.0 ? "p-green" : r <= 1.3 ? "p-yellow" : "p-red";
+}
+function paceLabel(r) {
+  return r == null ? "" : r < 0.5 ? "low burn" : r <= 1.0 ? "on pace" : r <= 1.3 ? "close to quota" : "too fast";
+}
+function burnCard(name, usedText, used, quota, elapsed, sub) {
+  const r = paceOf(used, quota, elapsed);
+  const pct = Math.min(100, 100 * used / Math.max(quota, 1e-9));
+  return '<div class="bcard ' + paceClass(r) + '"><b>' + esc(name) + "</b>" +
+    '<div class="big">' + usedText + "</div>" +
+    '<div class="pace">' + (r == null ? "no quota" : r.toFixed(2) + "× pace — " + paceLabel(r)) + "</div>" +
+    '<div class="row">' + esc(sub) + "</div>" +
+    '<div class="bar"><i style="width:' + pct + '%"></i>' +
+      '<span class="tick" style="left:' + Math.min(100, 100 * elapsed) + '%"></span></div></div>';
+}
+
 function render() {
   const m = ops.month;
+  const pmap = new Map((ops.params || []).map(p => [p.key, p.value]));
+  const burn = [];
+  const now = Date.now();
+  let cycFrac = 0.5;
   if (m) {
-    document.getElementById("strip").textContent =
-      "✓ $" + fmt(m.mtd_cost_usd, 2) + " MTD · supadata " + m.cycle_supadata_calls + "/" +
-      m.supadata_allotment + " this cycle (resets " + String(m.supadata_cycle_end).slice(0, 10) + ")";
+    const cs = new Date(m.supadata_cycle_start).getTime();
+    const ce = new Date(m.supadata_cycle_end).getTime();
+    cycFrac = Math.min(1, Math.max(0, (now - cs) / Math.max(1, ce - cs)));
+    burn.push(burnCard("Supadata credits",
+      m.cycle_supadata_calls + " / " + m.supadata_allotment,
+      m.cycle_supadata_calls, m.supadata_allotment, cycFrac,
+      Math.round(cycFrac * 100) + "% of cycle elapsed · resets " + String(m.supadata_cycle_end).slice(0, 10)));
+    const budgetUsd = Number(pmap.get("claude_budget_usd_month")) || 20;
+    const d = new Date();
+    const monthFrac = Math.min(1, d.getDate() /
+      new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate());
+    burn.push(burnCard("Claude spend",
+      "$" + fmt(m.mtd_cost_usd, 2) + " / $" + budgetUsd,
+      Number(m.mtd_cost_usd) || 0, budgetUsd, monthFrac,
+      Math.round(monthFrac * 100) + "% of month elapsed · soft budget (yt_params), nothing blocks at the cap"));
   }
-
   const budgets = ops.campaign_budget || [];
+  budgets.forEach(b => {
+    burn.push(burnCard("Campaign: " + b.name,
+      b.supadata_used_cycle + " / " + b.supadata_cap_per_cycle,
+      b.supadata_used_cycle, b.supadata_cap_per_cycle, cycFrac,
+      b.status + " · tier " + b.tier + " · transcripts this cycle"));
+  });
+  document.getElementById("burn").innerHTML =
+    burn.length ? burn.join("") : '<div class="empty">No data.</div>';
+
   document.getElementById("budgets").innerHTML = budgets.length ? budgets.map(b => {
     const pct = Math.min(100, 100 * b.supadata_used_cycle / Math.max(1, b.supadata_cap_per_cycle));
-    return '<div class="bcard"><b>' + esc(b.name) + "</b>" +
+    const cls = paceClass(paceOf(b.supadata_used_cycle, b.supadata_cap_per_cycle, cycFrac));
+    return '<div class="bcard ' + cls + '"><b>' + esc(b.name) + "</b>" +
       '<div class="row">' + esc(b.status) + " · tier " + b.tier + " · " +
         b.videos_pending + " pending · " + b.videos_processed + " processed</div>" +
       '<div class="row">transcripts: ' + b.supadata_used_cycle + " / " + b.supadata_cap_per_cycle +
         " this cycle · promotes ≤" + b.daily_video_cap + "/day</div>" +
-      '<div class="bar"><i style="width:' + pct + '%"></i></div></div>';
+      '<div class="bar"><i style="width:' + pct + '%"></i>' +
+        '<span class="tick" style="left:' + Math.min(100, 100 * cycFrac) + '%"></span></div></div>';
   }).join("") : '<div class="empty">No campaigns.</div>';
 
   const y = ops.campaign_yield || [];
@@ -160,6 +232,13 @@ function render() {
       "</td></tr>").join("") : '<tr><td colspan="8" class="empty">No campaign data yet.</td></tr>');
 
   renderTotals();
+
+  document.getElementById("knobs").innerHTML =
+    "<tr><th>key</th><th>value</th><th>what it does</th></tr>" +
+    ((ops.params || []).length ? (ops.params || []).map(p =>
+      "<tr><td>" + esc(p.key) + '</td><td style="color:var(--accent)">' + esc(p.value) +
+      "</td><td>" + esc(p.description) + "</td></tr>").join("")
+      : '<tr><td colspan="3" class="empty">yt_params not populated yet — run the 20260729 migration.</td></tr>');
 
   const months = [...new Set((ops.channel_monthly || []).map(r => r.month))].sort().reverse();
   const sel = document.getElementById("monthSel");
