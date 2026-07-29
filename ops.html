@@ -58,6 +58,7 @@
 <div class="sub">Channel economics and campaign yields. Read-only — campaigns are edited in the SQL editor.</div>
 <h2>Burn rate</h2>
 <div class="note" style="color:var(--dim);font-size:12.5px;border:none;padding:0;margin:0 0 8px">
+Each card names the resource being burned and who is burning it.
 used ÷ quota, normalized by how much of the period has elapsed —
 <span class="p-blue">low</span> &lt;0.5× · <span class="p-green">on pace</span> ≤1× ·
 <span class="p-yellow">close</span> ≤1.3× · <span class="p-red">too fast</span> &gt;1.3×.
@@ -188,25 +189,28 @@ function render() {
     const cs = new Date(m.supadata_cycle_start).getTime();
     const ce = new Date(m.supadata_cycle_end).getTime();
     cycFrac = Math.min(1, Math.max(0, (now - cs) / Math.max(1, ce - cs)));
-    burn.push(burnCard("Supadata credits",
+    burn.push(burnCard("Transcript pulls — whole pipeline",
       m.cycle_supadata_calls + " / " + m.supadata_allotment,
       m.cycle_supadata_calls, m.supadata_allotment, cycFrac,
-      Math.round(cycFrac * 100) + "% of cycle elapsed · resets " + String(m.supadata_cycle_end).slice(0, 10)));
+      "Supadata credits this billing cycle · " + Math.round(cycFrac * 100) +
+      "% elapsed · resets " + String(m.supadata_cycle_end).slice(0, 10)));
     const budgetUsd = Number(pmap.get("claude_budget_usd_month")) || 20;
     const d = new Date();
     const monthFrac = Math.min(1, d.getDate() /
       new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate());
-    burn.push(burnCard("Claude spend",
+    burn.push(burnCard("AI reading & scoring — whole pipeline",
       "$" + fmt(m.mtd_cost_usd, 2) + " / $" + budgetUsd,
       Number(m.mtd_cost_usd) || 0, budgetUsd, monthFrac,
-      Math.round(monthFrac * 100) + "% of month elapsed · soft budget (yt_params), nothing blocks at the cap"));
+      "Claude API dollars this month · " + Math.round(monthFrac * 100) +
+      "% elapsed · soft budget (yt_params) — nothing blocks at the cap"));
   }
   const budgets = ops.campaign_budget || [];
   budgets.forEach(b => {
-    burn.push(burnCard("Campaign: " + b.name,
+    burn.push(burnCard('Transcript pulls — keyword campaign "' + b.name + '"',
       b.supadata_used_cycle + " / " + b.supadata_cap_per_cycle,
       b.supadata_used_cycle, b.supadata_cap_per_cycle, cycFrac,
-      b.status + " · tier " + b.tier + " · transcripts this cycle"));
+      "this campaign's slice of the Supadata credits above · " +
+      b.status + " · tier " + b.tier));
   });
   document.getElementById("burn").innerHTML =
     burn.length ? burn.join("") : '<div class="empty">No data.</div>';
