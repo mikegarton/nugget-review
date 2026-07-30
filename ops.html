@@ -78,12 +78,13 @@ A query with finds but no ≥4★ after a couple of weeks is a candidate for ret
 <div class="twrap"><table id="totals"></table></div>
 <div class="note">Cost = Claude tokens + prorated Supadata credits, from the call log.
 Nugget counts are surviving nuggets (1★ rows are purged). Disabled channels are
-campaign discoveries, not part of the trusted poll list. Substack channels cost
-magnitudes less (no transcripts) — the $/nugget and $/5★ rates carry 5 and 4
-decimals so tiny costs still prove they have a number; their transcript/minutes
-columns are legitimately blank, and nug/item is the density metric both sources
-share. Channels processed before 2026-07-25 predate cost logging and show $0.
-Tap a column header to sort.</div>
+campaign discoveries, not part of the trusted poll list. Value rates are
+per-dollar — nug/$ and 5★/$ — because substack costs run magnitudes below
+video costs and "nuggets per dollar" compares cleanly where "$0.00003 per
+nugget" reads as noise; bigger is better, like every density column. Substack
+transcript/minutes columns are legitimately blank; nug/item is the density
+metric both sources share. Channels processed before 2026-07-25 predate cost
+logging and show $0 (per-dollar rates blank). Tap a column header to sort.</div>
 
 <h2>Channel economics — by month</h2>
 <select id="monthSel"></select>
@@ -119,18 +120,19 @@ const TOTAL_COLS = [
   ["nuggets", "nuggets", 0],
   ["rated_ge4", "≥4★", 0],
   ["five_star", "5★", 0],
-  ["usd_per_nugget", "$/nugget", 5],
-  ["usd_per_five_star", "$/5★", 4],
+  ["nug_per_usd", "nug/$", 0],
+  ["five_star_per_usd", "5★/$", 1],
   ["nug_per_item", "nug/item", 2],
   ["nuggets_per_transcript_minute", "nug/min", 3],
 ];
 
-// Rates are computed here from the raw cost rather than shown from the
-// server's 4-decimal rounding: substack costs are magnitudes smaller than
-// video costs, and a rate needs enough digits to prove it has a number.
+// Value rates are INVERTED to per-dollar (Mike's call): $/nugget in the
+// 0.001-0.00001 range reads as noise, while "381 nuggets per dollar" is a
+// number a human can compare. Computed from raw cost, not the server's
+// 4-decimal rounding. Bigger = better, matching every other density metric.
 function metric(r, k) {
-  if (k === "usd_per_nugget") return r.nuggets > 0 ? r.cost_usd / r.nuggets : null;
-  if (k === "usd_per_five_star") return r.five_star > 0 ? r.cost_usd / r.five_star : null;
+  if (k === "nug_per_usd") return r.cost_usd > 0 ? r.nuggets / r.cost_usd : null;
+  if (k === "five_star_per_usd") return r.cost_usd > 0 ? r.five_star / r.cost_usd : null;
   if (k === "nug_per_item") return r.videos_processed > 0 ? r.nuggets / r.videos_processed : null;
   return r[k];
 }
