@@ -262,7 +262,7 @@ function ghead(n, g) {
       "<span>" + fmtD(n.publishedAt || n.created_at) + "</span>" +
       '<span class="chip">' + g.length + " nuggets" + dur + "</span>" + hype +
       '<div class="stars gstars">' + [1,2,3,4,5].map(k =>
-        '<button title="' + k + ' — ' + SCALE[k] + ' (rates every unrated nugget)" class="' +
+        '<button title="' + k + ' — ' + SCALE[k] + ' (rates every unrated nugget; re-tap corrects a uniformly rated group)" class="' +
           (gmin >= k ? "lit" : "") + '" onclick="rateAll(\'' + n.video_id + '\',' + k + ')">&#9733;</button>'
       ).join("") + "</div>" +
       '<a class="watch gwatch" target="_blank" rel="noopener" href="' +
@@ -304,15 +304,24 @@ async function watchAllClick(vid) {
   for (const n of group) await post("/watched", { id: n.id, watched: true });
 }
 
-// Header stars rate every *unrated* nugget in the group; individual ratings
-// are never overwritten. 4-5 queues the lot; 1-2 closes it out under "open" —
-// no pinning, so a low rating makes the group disappear immediately.
+// Header stars rate every *unrated* nugget in the group; mixed individual
+// ratings are never overwritten. But a group carrying ONE uniform rating —
+// the result of a previous header tap — stays correctable from the header:
+// a different star re-rates the lot, the same star clears it (mirroring
+// per-card stars). 4-5 queues the lot; 1-2 closes it out under "open".
 async function rateAll(vid, k) {
-  const group = all.filter(x => x.video_id === vid && x.rating == null);
-  if (!group.length) return;
-  for (const n of group) n.rating = k;
+  const g = all.filter(x => x.video_id === vid);
+  let targets = g.filter(x => x.rating == null);
+  let next = k;
+  if (!targets.length) {
+    const first = g[0] && g[0].rating;
+    if (!g.every(x => x.rating === first)) return; // mixed: hands off
+    targets = g;
+    next = first === k ? null : k;
+  }
+  for (const n of targets) n.rating = next;
   render();
-  for (const n of group) await post("/rate", { id: n.id, rating: k });
+  for (const n of targets) await post("/rate", { id: n.id, rating: next });
 }
 
 function card(n) {

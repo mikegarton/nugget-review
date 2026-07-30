@@ -46,8 +46,11 @@ Bookmark: `https://mikegarton.github.io/nugget-review/?key=<YT_REVIEW_KEY>`
   collapsible header — "X nuggets in Y" with channel, date, a Watch
   button for the whole video (marks every nugget in the group watched),
   and a star row that rates every **unrated** nugget in the group
-  (individual ratings are never overwritten; 4–5 queues the lot, 1–2
-  dismisses it). Header stars light up to the group's lowest rating.
+  (mixed individual ratings are never overwritten; 4–5 queues the lot,
+  1–2 dismisses it). A group carrying ONE uniform rating — the result of
+  a previous header tap — stays correctable from the header: a different
+  star re-rates the lot, the same star clears it. Header stars light up
+  to the group's lowest rating.
   The header leads with the humble title (`plain_title` from the
   processor; pre-hype videos fall back to the lead nugget's headline),
   with the channel's verbatim YouTube title below it and a signed
