@@ -91,8 +91,10 @@ Bookmark: `https://mikegarton.github.io/nugget-review/?key=<YT_REVIEW_KEY>`
   still deserve a number), and **nug/item** — the density metric both
   sources share, since posts have no transcript minutes; lifetime +
   monthly. Channels processed before 2026-07-25 predate cost logging
-  and show $0. Finally the live `yt_params` knob table. Campaigns and
-  knobs are edited in the SQL editor, not here (control GUI later).
+  and show $0. Finally the pipeline flow parameters — every tunable
+  number, live from the `yt_params` config table. Campaigns and
+  parameters are edited in the SQL editor, not here (control GUI
+  later).
 
 Cards you rate or watch stay **pinned in place** (dimmed) until the next
 mode/filter change or reload, so acting on a card never yanks it out of the

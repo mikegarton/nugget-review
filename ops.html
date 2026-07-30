@@ -90,10 +90,11 @@ logging and show $0 (per-dollar rates blank). Tap a column header to sort.</div>
 <select id="monthSel"></select>
 <div class="twrap"><table id="monthly"></table></div>
 
-<h2>Knobs (yt_params)</h2>
+<h2>Pipeline flow parameters</h2>
 <div class="twrap"><table id="knobs"></table></div>
-<div class="note">Every tunable number the functions run on, live from the
-database. Edit in the SQL editor —
+<div class="note">Every tunable number the pipeline runs on — batch pace,
+retry behavior, budgets, caps — live from the config table
+<code>yt_params</code>. Edit in the SQL editor —
 <code>update yt_params set value = '…' where key = '…';</code> — and the next
 run picks it up, no redeploy. This table is the surface a future control GUI
 will edit.</div>
