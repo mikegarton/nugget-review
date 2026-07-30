@@ -1,11 +1,19 @@
 # nugget-review
 
-Phone-first review dashboard for the [YouTube nugget pipeline]
-(https://github.com/mikegarton/yt-nugget-pipeline). This repo is the **static
-shell only** — a single `index.html` served by GitHub Pages. It contains no
-data and no secrets: all data comes from the pipeline's key-gated `yt-review`
-Supabase function (JSON, CORS-enabled), and the key lives only in the
-bookmark's `?key=` parameter.
+Phone-first review dashboard for the [nugget pipeline]
+(https://github.com/mikegarton/yt-nugget-pipeline) — YouTube channels and
+Substack publications through one review loop. This repo is the **static
+shell only**, served by GitHub Pages (public + Pages enabled 2026-07-29):
+
+- `index.html` — the viewer (skim, rate, queue)
+- `ops.html` — burn rates, campaign yields, channel economics, live knobs
+- `home.html` — the public control room: links to every dashboard and
+  reference doc
+
+It contains no data and no secrets: all data comes from the pipeline's
+key-gated `yt-review` Supabase function (JSON, CORS-enabled), and the key
+lives only in the bookmark's `?key=` parameter (the control room keeps it
+in each device's browser localStorage).
 
 Why Pages: Supabase's gateway rewrites any `text/html` response from
 `*.supabase.co` to `text/plain` with a sandbox CSP, so the shell cannot be
@@ -68,15 +76,23 @@ Bookmark: `https://mikegarton.github.io/nugget-review/?key=<YT_REVIEW_KEY>`
   them. Stars keep one meaning everywhere ("I intend to watch this");
   the legend under the stars carries the standing reminder, and
   ratings feed the campaign's per-query yield stats.
-- `ops.html` (same key): read-only ops page. **Burn rate** cards lead:
-  every metered budget (Supadata cycle, soft Claude $ budget, each
-  campaign cap) shown as used/quota with a pace ratio normalized by
-  elapsed period — blue &lt;0.5× · green ≤1× · yellow ≤1.3× · red
-  &gt;1.3×, tick marks "exactly on pace". Then per-query campaign
-  yields, channel economics ($/nugget, $/5★, nuggets per
-  transcript-minute, lifetime + monthly), and the live `yt_params`
-  knob table. Campaigns and knobs are edited in the SQL editor, not
-  here (control GUI later).
+- Substack nuggets wear a `substack` chip and source-appropriate verbs —
+  **📖 Read now / mark seen** — linking to the post itself; header
+  actions follow suit. Same stars, same meaning.
+- `ops.html` (same key): read-only ops page. **Burn rate** cards lead —
+  each card names the resource AND the consumer: whole pipeline
+  (Supadata cycle), subscriptions (trusted channels' share after
+  campaign reservations), Claude $ (soft budget), and each campaign
+  cap — used/quota with a pace ratio normalized by elapsed period,
+  blue &lt;0.5× · green ≤1× · yellow ≤1.3× · red &gt;1.3×, tick =
+  exactly on pace. Then per-query campaign yields; channel economics
+  with a sortable **source** column (youtube | substack), $/nugget to
+  5 decimals and $/5★ to 4 (substack costs are magnitudes smaller and
+  still deserve a number), and **nug/item** — the density metric both
+  sources share, since posts have no transcript minutes; lifetime +
+  monthly. Channels processed before 2026-07-25 predate cost logging
+  and show $0. Finally the live `yt_params` knob table. Campaigns and
+  knobs are edited in the SQL editor, not here (control GUI later).
 
 Cards you rate or watch stay **pinned in place** (dimmed) until the next
 mode/filter change or reload, so acting on a card never yanks it out of the
