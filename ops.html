@@ -175,7 +175,10 @@ function renderTotals() {
     ).join("") + "</tr>" +
     rows.map(r => "<tr>" + TOTAL_COLS.map(([k, , d]) => {
       if (k === "label") {
-        return "<td>" + esc(r.label) + (r.enabled === false ? ' <span class="hot">(campaign)</span>' : "") + "</td>";
+        // enabled=false says only "not subscribed" — the channel could host
+        // campaign promotions, manual adds, or both. Per-acquisition economics
+        // live in the Sources table above, where the split is real.
+        return "<td>" + esc(r.label) + (r.enabled === false ? ' <span class="hot">(not subscribed)</span>' : "") + "</td>";
       }
       if (k === "source") return "<td>" + sourceHtml(r.source) + "</td>";
       return "<td>" + (d == null ? esc(r[k]) : fmt(metric(r, k), d)) + "</td>";
