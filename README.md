@@ -17,6 +17,9 @@ shell only**, served by GitHub Pages (public + Pages enabled 2026-07-29):
   current tab's video to the pipeline; right-click any YouTube link for the
   context menu; badge counts today's adds. Endpoint + review key live in
   the extension's own storage, never in this repo.
+- `capture.html` — user instructions for all three capture surfaces
+  (extension install/use, the unlisted-playlist inbox that covers the
+  NVIDIA Shield and phone/tablet YouTube apps, and the paste box)
 
 It contains no data and no secrets: all data comes from the pipeline's
 key-gated `yt-review` Supabase function (JSON, CORS-enabled), and the key

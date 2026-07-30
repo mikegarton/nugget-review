@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Sending to pipeline…</title>
+<style>
+  :root {
+    --bg: #101114; --panel: #1a1c21; --line: #2c3038;
+    --ink: #e8e8e6; --dim: #9a9da5; --blue: #5aa8f0; --good: #6fc48d;
+    --bad: #e0704e;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f7f6f2; --panel: #ffffff; --line: #dcd9d1;
+      --ink: #23221e; --dim: #5d5a52; --blue: #2c6e91; --good: #2e7d4f;
+      --bad: #a33c1e; }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--ink);
+    font: 17px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 40px 20px; max-width: 480px; margin: 0 auto; text-align: center; }
+  #icon { font-size: 44px; margin-bottom: 12px; }
+  #msg { font-size: 18px; font-weight: 600; }
+  #detail { color: var(--dim); font-size: 14px; margin-top: 8px; word-break: break-word; }
+  .ok { color: var(--good); } .err { color: var(--bad); } .fast { color: var(--blue); }
+  a.btn { display: inline-block; margin-top: 22px; background: var(--panel);
+    border: 1px solid var(--line); color: var(--ink); border-radius: 10px;
+    padding: 10px 18px; text-decoration: none; font-size: 15px; }
+</style>
+</head>
+<body>
+<!-- Web Share Target handler: Android's share sheet opens this page with the
+     shared content in the query string (?title=&text=&url= per the manifest).
+     It extracts the video URL, posts it to yt-add with the review key already
+     saved on this device (same localStorage as the control room), and shows
+     the verdict. Two taps total from the YouTube app: Share -> Nuggets. -->
+<div id="icon">⏳</div>
+<div id="msg">Sending to the pipeline…</div>
+<div id="detail"></div>
+<a class="btn" href="home.html">Control room</a>
+<script>
+const ADD_URL = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-add";
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g,
+    (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function show(icon, cls, msg, detail) {
+  document.getElementById("icon").textContent = icon;
+  const m = document.getElementById("msg");
+  m.textContent = msg; m.className = cls;
+  document.getElementById("detail").innerHTML = detail || "";
+}
+async function run() {
+  // The YouTube app usually puts the link in `text` (sometimes with the title
+  // prepended); other apps use `url`. Search all three for the first URL.
+  const p = new URLSearchParams(location.search);
+  const blob = [p.get("url"), p.get("text"), p.get("title")]
+    .filter(Boolean).join(" ");
+  const found = blob.match(/https?:\/\/[^\s]+/);
+  if (!found) {
+    show("✗", "err", "No link in the shared content",
+      "Share a YouTube video — the link travels with the share.");
+    return;
+  }
+  let key = "";
+  try { key = localStorage.getItem("cr_review_key") || ""; } catch (e) {}
+  if (!key) {
+    show("✗", "err", "No review key on this device",
+      'Open the <a href="home.html">control room</a> once and save the review key, then share again.');
+    return;
+  }
+  try {
+    const res = await fetch(ADD_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-review-key": key },
+      body: JSON.stringify({ urls: [found[0]] }),
+    });
+    const data = await res.json();
+    if (!res.ok) { show("✗", "err", "Rejected", esc(data.error || res.status)); return; }
+    const r = (data.results || [])[0] || {};
+    if (r.status === "added" && r.priority === 0) {
+      show("⚡", "fast", "Added — front of the queue",
+        esc(r.title || r.video_id) + "<br>Nuggets in ~5 minutes.");
+    } else if (r.status === "added") {
+      show("✓", "ok", "Added", esc(r.title || r.video_id));
+    } else if (r.status === "already_have") {
+      show("—", "ok", "Already in the pipeline", esc(r.title || r.video_id));
+    } else {
+      show("✗", "err", "Not added", esc(r.status || "unknown") + " — " + esc(found[0]));
+    }
+  } catch (e) {
+    show("✗", "err", "Network error", esc(String(e)));
+  }
+}
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+run();
+</script>
+</body>
+</html>

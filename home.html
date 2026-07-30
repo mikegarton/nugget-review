@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#101114">
 <title>Mike's control room</title>
 <style>
   :root {
@@ -50,6 +52,8 @@ This page holds no secrets: keys live only in each device's browser.</p>
   <button onclick="addVideos()">Send to pipeline</button>
   <div class="note" id="add-result">The first 3 per hour jump the queue
   (processed within ~5 min); the rest follow at manual priority.</div>
+  <div class="note">Other ways in — Chrome extension (Alt+Q), playlist inbox
+  from the Shield or any phone: <a href="capture.html">how to send videos</a>.</div>
 </div>
 
 <h2>Dashboards — live instruments</h2>
@@ -66,13 +70,15 @@ This page holds no secrets: keys live only in each device's browser.</p>
 <a class="row" href="https://supabase.com/dashboard/project/zowilxlpldqxtotrvekd" target="_blank" rel="noopener">
   <b>Supabase project</b><span>SQL editor, functions, advisor (login)</span></a>
 
-<h2>Reference docs — Claude login</h2>
+<h2>Reference docs</h2>
+<a class="row" href="capture.html">
+  <b>Sending videos to the pipeline</b><span>extension install &amp; use, playlist inbox for the Shield/phone, paste box — no login needed</span></a>
 <a class="row" href="https://claude.ai/code/artifact/24bf2b13-67b5-464c-92ee-6151a5b57eaf" target="_blank" rel="noopener">
-  <b>Limits &amp; costs chart</b><span>every quota, wall, and knob</span></a>
+  <b>Limits &amp; costs chart</b><span>every quota, wall, and knob (Claude login)</span></a>
 <a class="row" href="https://claude.ai/code/artifact/928a7573-29bb-4857-99c4-5c34f2d6ed79" target="_blank" rel="noopener">
-  <b>Which AI surface for this?</b><span>the decision tree</span></a>
+  <b>Which AI surface for this?</b><span>the decision tree (Claude login)</span></a>
 <a class="row" href="https://claude.ai/code/artifact/2aefa9d9-a834-4045-a5a7-7a713fce39e9" target="_blank" rel="noopener">
-  <b>Open Brain — key rotation runbook</b><span>when a key needs replacing</span></a>
+  <b>Open Brain — key rotation runbook</b><span>when a key needs replacing (Claude login)</span></a>
 <a class="row" href="https://github.com/mikegarton/yt-nugget-pipeline/blob/main/docs/LIMITS.md" target="_blank" rel="noopener">
   <b>LIMITS.md</b><span>versioned source of truth, auto-verified monthly (GitHub login)</span></a>
 

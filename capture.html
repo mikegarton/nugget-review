@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sending videos to the pipeline</title>
+<style>
+  :root {
+    --bg: #101114; --panel: #1a1c21; --line: #2c3038;
+    --ink: #e8e8e6; --dim: #9a9da5; --blue: #5aa8f0; --gold: #e0b34e;
+    --good: #6fc48d;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f7f6f2; --panel: #ffffff; --line: #dcd9d1;
+      --ink: #23221e; --dim: #5d5a52; --blue: #2c6e91; --gold: #8a6a1c;
+      --good: #2e7d4f; }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--ink);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 26px 16px 60px; max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  .lede { color: var(--dim); font-size: 14px; margin-bottom: 8px; }
+  h2 { font-size: 18px; margin: 28px 0 8px; color: var(--blue); }
+  h3 { font-size: 15px; margin: 16px 0 4px; }
+  p, li { color: var(--ink); font-size: 14.5px; margin-bottom: 8px; }
+  ol, ul { padding-left: 22px; margin-bottom: 8px; }
+  li { margin-bottom: 4px; }
+  .box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 16px; margin: 10px 0; }
+  .tag { display: inline-block; font-size: 12px; border-radius: 10px; padding: 1px 9px;
+    background: var(--panel); border: 1px solid var(--line); color: var(--dim); margin-left: 6px; }
+  code { background: var(--panel); border: 1px solid var(--line); border-radius: 5px;
+    padding: 1px 6px; font-size: 13px; }
+  .note { color: var(--dim); font-size: 13px; }
+  .warn { color: var(--gold); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; margin: 8px 0; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); }
+  a { color: var(--blue); }
+</style>
+</head>
+<body>
+<h1>Sending videos to the pipeline</h1>
+<p class="lede">Three ways to hand one specific video to the nugget pipeline.
+All three feed the same intake; pick whichever is nearest to hand.</p>
+
+<div class="box">
+<table>
+<tr><th>Surface</th><th>Effort</th><th>Works from</th><th>Latency</th></tr>
+<tr><td>Chrome extension</td><td>1 keystroke</td><td>desktop Chrome</td><td>~5 min</td></tr>
+<tr><td>Paste box (<a href="home.html">control room</a>)</td><td>paste many</td><td>any browser</td><td>~5 min</td></tr>
+<tr><td>Playlist inbox</td><td>2–3 taps</td><td>any YouTube app — Shield, phone, tablet, TV</td><td>up to ~1 h</td></tr>
+</table>
+<p class="note"><b>Priority:</b> the first 3 manual adds per hour (counted across
+all three surfaces) jump to the front of the processing queue; the rest still
+run ahead of every automatic source. If nothing worth keeping is found, the
+video appears in the viewer's "your manual adds" strip — you asked, so the
+answer is shown either way.</p>
+</div>
+
+<h2>Chrome extension <span class="tag">desktop only</span></h2>
+
+<h3>Install (once per computer)</h3>
+<ol>
+  <li>Get the folder <code>extension\</code> from the
+    <a href="https://github.com/mikegarton/nugget-review" target="_blank" rel="noopener">nugget-review repo</a>
+    onto the computer (on the dev machine it's <code>C:\dev\nugget-review\extension</code>;
+    elsewhere, Code &rarr; Download ZIP and unzip).</li>
+  <li>In Chrome open <code>chrome://extensions</code>, switch on
+    <b>Developer mode</b> (top right).</li>
+  <li>Click <b>Load unpacked</b> and pick the <code>extension</code> folder.</li>
+  <li>Click the extension's <b>Details &rarr; Extension options</b> and paste the
+    <b>review key</b> (the same key as the nugget viewer bookmark — not the ops
+    write key). Save.</li>
+</ol>
+
+<h3>Use</h3>
+<ul>
+  <li><b>Alt+Q</b> on any YouTube watch page sends that video. A notification
+    confirms; &#9889; means it jumped the queue.</li>
+  <li><b>Right-click any YouTube link or thumbnail</b> &rarr;
+    "Send to nugget pipeline" — no need to open the video.</li>
+  <li>The badge on the extension icon counts today's adds.</li>
+</ul>
+
+<h3>Limitations</h3>
+<ul class="note">
+  <li>Desktop Chrome/Edge/Brave only — no extension support exists in mobile or
+    TV Chrome, so this can never cover the Shield (that's the playlist's job).</li>
+  <li>The key is stored per browser profile; repeat step 4 on each machine.</li>
+  <li>Loaded unpacked, so Chrome may nag about developer-mode extensions and it
+    won't auto-update — refresh the folder (git pull / re-download) to update.</li>
+  <li>If Alt+Q doesn't fire, another extension owns the shortcut — reassign at
+    <code>chrome://extensions/shortcuts</code>.</li>
+</ul>
+
+<h2>Playlist inbox <span class="tag">Shield · phone · tablet · any TV</span></h2>
+<p>One shared inbox playlist; saving any video to it from any device's YouTube
+app sends it to the pipeline on the next hourly sweep.</p>
+
+<h3>Set up (once)</h3>
+<ol>
+  <li>In YouTube (easiest on desktop): save any video to a <b>new playlist</b>
+    named e.g. <i>Nugget inbox</i>, visibility
+    <b class="warn">Unlisted</b> — this matters: a <i>private</i> playlist is
+    invisible to the pipeline (reads as 404); unlisted is reachable but not
+    discoverable.</li>
+  <li>Open the playlist and copy its id from the URL —
+    the part after <code>list=</code>, starting <code>PL…</code>.</li>
+  <li>In the Supabase SQL editor run:<br>
+    <code>update yt_params set value = '&lt;PL…&gt;' where key = 'manual_playlist_id';</code></li>
+</ol>
+
+<h3>Use (every device)</h3>
+<ul>
+  <li><b>NVIDIA Shield / TV YouTube app:</b> on a video, open its options
+    (long-press or the &#8942; menu) &rarr; <b>Save</b> &rarr; pick <i>Nugget inbox</i>.</li>
+  <li><b>Phone / tablet:</b> under the video, <b>Save</b> &rarr; <i>Nugget inbox</i>.</li>
+  <li>That's it — the poller sweeps the playlist every hour.</li>
+</ul>
+
+<h3>Notes</h3>
+<ul class="note">
+  <li>Latency is up to an hour (poll-bound), vs ~5 minutes for the other two
+    surfaces.</li>
+  <li>Videos stay in the playlist after ingestion — the pipeline never removes
+    them (that would need OAuth). Clear it out whenever it annoys you;
+    re-ingestion can't happen (re-adds are no-ops).</li>
+  <li>To pause the inbox: set <code>manual_playlist_id</code> back to
+    <code>''</code> in the SQL editor.</li>
+</ul>
+
+<h2>Paste box <span class="tag">any browser</span></h2>
+<p>On the <a href="home.html">control room</a>, once the review key is saved on
+that device: paste one or many YouTube links (one per line or comma-separated)
+and hit <b>Send to pipeline</b>. The reply lists each video —
+&#9889; jumped the queue, &#10003; added, &mdash; already known.</p>
+<p class="note">This is the batch surface: up to 50 links at once. It works on a
+phone too — from the YouTube app: Share &rarr; Copy link &rarr; paste here.</p>
+
+<h2>Where results appear</h2>
+<ul>
+  <li>Nuggets land in the <a href="index.html">viewer</a> like everything else,
+    with a <b>manual add</b> chip.</li>
+  <li>Manual adds that produced <b>zero</b> nuggets appear in a strip at the top
+    of the viewer — "analyzed, no nuggets found" is a real answer, not a
+    silence.</li>
+  <li>Per-source counts and spend: the <b>Sources</b> table on the
+    <a href="ops.html">ops page</a> (row <code>youtube_manual</code>).</li>
+</ul>
+</body>
+</html>

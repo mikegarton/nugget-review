@@ -1,0 +1,19 @@
+{
+  "name": "Nugget pipeline",
+  "short_name": "Nuggets",
+  "description": "Mike's control room + share-sheet target: share a YouTube video straight into the nugget pipeline.",
+  "start_url": "./home.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#101114",
+  "theme_color": "#101114",
+  "icons": [
+    { "src": "icon192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon512.png", "sizes": "512x512", "type": "image/png" }
+  ],
+  "share_target": {
+    "action": "./share.html",
+    "method": "GET",
+    "params": { "title": "title", "text": "text", "url": "url" }
+  }
+}
