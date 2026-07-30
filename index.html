@@ -265,10 +265,13 @@ function ghead(n, g) {
         '<button title="' + k + ' — ' + SCALE[k] + ' (rates every unrated nugget)" class="' +
           (gmin >= k ? "lit" : "") + '" onclick="rateAll(\'' + n.video_id + '\',' + k + ')">&#9733;</button>'
       ).join("") + "</div>" +
-      '<a class="watch gwatch" target="_blank" rel="noopener" href="https://www.youtube.com/watch?v=' + n.video_id +
-        '" onclick="watchAllClick(\'' + n.video_id + '\')">&#9654; Watch now</a>' +
+      '<a class="watch gwatch" target="_blank" rel="noopener" href="' +
+        (n.source === "substack" ? esc(n.contentUrl || "#") : "https://www.youtube.com/watch?v=" + n.video_id) +
+        '" onclick="watchAllClick(\'' + n.video_id + '\')">' +
+        (n.source === "substack" ? "&#128214; Read now" : "&#9654; Watch now") + "</a>" +
       '<button class="wtoggle gwt' + (allW ? " on" : "") + '" onclick="watchedAll(\'' + n.video_id + '\')">' +
-        (allW ? "watched &#10003;" : "mark watched") + "</button>" +
+        (allW ? (n.source === "substack" ? "seen" : "watched") + " &#10003;"
+              : "mark " + (n.source === "substack" ? "seen" : "watched")) + "</button>" +
     "</div></div>";
 }
 
@@ -314,9 +317,14 @@ async function rateAll(vid, k) {
 
 function card(n) {
   const open = n.id === openId;
-  const link = "https://www.youtube.com/watch?v=" + n.video_id +
-    (n.start_seconds != null ? "&t=" + n.start_seconds + "s" : "");
-  const watchLabel = n.start_seconds != null ? "&#9654; Watch at " + fmtT(n.start_seconds) : "&#9654; Watch now";
+  // Verb pair follows the source: watch/watched for video, read/seen for posts.
+  const isPost = n.source === "substack";
+  const doneWord = isPost ? "seen" : "watched";
+  const link = isPost ? (n.contentUrl || "#")
+    : "https://www.youtube.com/watch?v=" + n.video_id +
+      (n.start_seconds != null ? "&t=" + n.start_seconds + "s" : "");
+  const watchLabel = isPost ? "&#128214; Read now"
+    : n.start_seconds != null ? "&#9654; Watch at " + fmtT(n.start_seconds) : "&#9654; Watch now";
   const res = state.mode === "stretch"
     ? ' <span class="chip res">mentor +' + residual(n).toFixed(0) + "</span>" : "";
   return '<div class="card' + (open ? " open" : "") + (n.watched_at ? " watched" : "") + '">' +
@@ -326,6 +334,7 @@ function card(n) {
       "<span>" + fmtD(n.publishedAt || n.created_at) + "</span>" +
       (n.domain ? '<span class="chip">' + esc(n.domain) + "</span>" : "") +
       (n.nugget_type ? '<span class="chip">' + esc(n.nugget_type) + "</span>" : "") +
+      (isPost ? '<span class="chip">substack</span>' : "") +
       '<span class="score p">P' + Math.round(n.personal_score) + "</span>" +
       '<span class="score e">E' + Math.round(n.expert_score) + "</span>" + res +
       (n.rating ? '<span class="chip" style="color:var(--gold)">&#9733;' + n.rating + "</span>" : "") +
@@ -339,7 +348,7 @@ function card(n) {
           '<button title="' + k + ' — ' + SCALE[k] + '" class="' + (n.rating >= k ? "lit" : "") + '" onclick="rate(\'' + n.id + '\',' + k + ')">&#9733;</button>'
         ).join("") + "</div>" +
         '<button class="wtoggle' + (n.watched_at ? " on" : "") + '" onclick="watched(\'' + n.id + '\')">' +
-          (n.watched_at ? "watched &#10003;" : "mark watched") + "</button>" +
+          (n.watched_at ? doneWord + " &#10003;" : "mark " + doneWord) + "</button>" +
       "</div>" +
       '<div class="rnote">' + rnote(n) + "</div>" +
     "</div></div>";
@@ -444,6 +453,8 @@ async function load() {
     plainTitle: n.yt_videos?.plain_title || "",
     hypeLevel: n.yt_videos?.hype_level ?? null,
     campaignId: n.yt_videos?.campaign_id ?? null,
+    source: n.yt_videos?.source || "youtube",
+    contentUrl: n.yt_videos?.url || null,
     publishedAt: n.yt_videos?.published_at,
     durationSeconds: n.yt_videos?.duration_seconds ?? null,
   }));
