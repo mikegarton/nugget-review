@@ -76,6 +76,11 @@ Bookmark: `https://mikegarton.github.io/nugget-review/?key=<YT_REVIEW_KEY>`
   them. Stars keep one meaning everywhere ("I intend to watch this");
   the legend under the stars carries the standing reminder, and
   ratings feed the campaign's per-query yield stats.
+- **Second-dimension stripe**: each card's left edge is colored by the
+  score the current sort ISN'T showing (mentor score everywhere; your
+  taste score in Stretch) — green ≥75, gold ≥85, nothing otherwise —
+  so skimming any sorted list still catches standouts on the other
+  axis. The legend line names the stripe's dimension per mode.
 - Substack nuggets wear a `substack` chip and source-appropriate verbs —
   **📖 Read now / mark seen** — linking to the post itself; header
   actions follow suit. Same stars, same meaning.

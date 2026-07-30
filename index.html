@@ -47,6 +47,8 @@
     padding: 10px 12px;
   }
   .card.watched { opacity: 0.55; }
+  .card.hot1 { border-left: 4px solid var(--good); }
+  .card.hot2 { border-left: 4px solid var(--gold); }
   .hl { font-weight: 600; cursor: pointer; }
   .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; font-size: 12px; color: var(--dim); }
   .chip { background: var(--card2); border-radius: 10px; padding: 1px 8px; }
@@ -203,7 +205,8 @@ function render() {
   const v = visible();
   document.getElementById("count").textContent =
     v.length + " nuggets" + (state.mode === "stretch" ? " — sorted by how much the mentor disagrees with your taste"
-      : state.mode === "prospect" ? " — keyword prospects: rate what you'd actually watch" : "");
+      : state.mode === "prospect" ? " — keyword prospects: rate what you'd actually watch" : "") +
+    " · edge stripe = " + (stripeDim() === "personal" ? "your taste" : "mentor") + " score (green 75+, gold 85+)";
   document.getElementById("gToggle").className = state.group ? "on" : "";
   const list = document.getElementById("list");
   if (!v.length) { list.innerHTML = '<div class="empty">Nothing here.</div>'; return; }
@@ -324,6 +327,18 @@ async function rateAll(vid, k) {
   for (const n of targets) await post("/rate", { id: n.id, rating: next });
 }
 
+// Second-dimension stripe: the sort order carries one score, the colored
+// left edge carries the one it ISN'T showing — so skimming any sorted list
+// still catches standouts on the other axis (green >=75, gold >=85; no
+// stripe for the ordinary, which is what makes the rare ones pop).
+function stripeDim() {
+  return (state.mode === "stretch") ? "personal" : "expert";
+}
+function stripeClass(n) {
+  const s = stripeDim() === "personal" ? n.personal_score : n.expert_score;
+  return s >= 85 ? " hot2" : s >= 75 ? " hot1" : "";
+}
+
 function card(n) {
   const open = n.id === openId;
   // Verb pair follows the source: watch/watched for video, read/seen for posts.
@@ -336,7 +351,7 @@ function card(n) {
     : n.start_seconds != null ? "&#9654; Watch at " + fmtT(n.start_seconds) : "&#9654; Watch now";
   const res = state.mode === "stretch"
     ? ' <span class="chip res">mentor +' + residual(n).toFixed(0) + "</span>" : "";
-  return '<div class="card' + (open ? " open" : "") + (n.watched_at ? " watched" : "") + '">' +
+  return '<div class="card' + (open ? " open" : "") + (n.watched_at ? " watched" : "") + stripeClass(n) + '">' +
     '<div class="hl" onclick="toggle(\'' + n.id + '\')">' + esc(n.headline || n.content.slice(0, 110)) + "</div>" +
     '<div class="meta">' +
       "<b>" + esc(n.channelLabel) + "</b>" +
