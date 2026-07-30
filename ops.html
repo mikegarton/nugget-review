@@ -78,7 +78,12 @@ A query with finds but no ≥4★ after a couple of weeks is a candidate for ret
 <div class="twrap"><table id="totals"></table></div>
 <div class="note">Cost = Claude tokens + prorated Supadata credits, from the call log.
 Nugget counts are surviving nuggets (1★ rows are purged). Disabled channels are
-campaign discoveries, not part of the trusted poll list. Tap a column header to sort.</div>
+campaign discoveries, not part of the trusted poll list. Substack channels cost
+magnitudes less (no transcripts) — the $/nugget and $/5★ rates carry 5 and 4
+decimals so tiny costs still prove they have a number; their transcript/minutes
+columns are legitimately blank, and nug/item is the density metric both sources
+share. Channels processed before 2026-07-25 predate cost logging and show $0.
+Tap a column header to sort.</div>
 
 <h2>Channel economics — by month</h2>
 <select id="monthSel"></select>
@@ -108,19 +113,30 @@ const TOTAL_COLS = [
   ["label", "channel", null],
   ["cost_usd", "$", 2],
   ["supadata_calls", "transcripts", 0],
-  ["videos_processed", "videos", 0],
+  ["videos_processed", "items", 0],
   ["transcript_minutes", "minutes", 0],
   ["nuggets", "nuggets", 0],
   ["rated_ge4", "≥4★", 0],
   ["five_star", "5★", 0],
-  ["usd_per_nugget", "$/nugget", 3],
-  ["usd_per_five_star", "$/5★", 2],
+  ["usd_per_nugget", "$/nugget", 5],
+  ["usd_per_five_star", "$/5★", 4],
+  ["nug_per_item", "nug/item", 2],
   ["nuggets_per_transcript_minute", "nug/min", 3],
 ];
 
+// Rates are computed here from the raw cost rather than shown from the
+// server's 4-decimal rounding: substack costs are magnitudes smaller than
+// video costs, and a rate needs enough digits to prove it has a number.
+function metric(r, k) {
+  if (k === "usd_per_nugget") return r.nuggets > 0 ? r.cost_usd / r.nuggets : null;
+  if (k === "usd_per_five_star") return r.five_star > 0 ? r.cost_usd / r.five_star : null;
+  if (k === "nug_per_item") return r.videos_processed > 0 ? r.nuggets / r.videos_processed : null;
+  return r[k];
+}
+
 function renderTotals() {
   const rows = (ops.channel_totals || []).slice().sort((a, b) => {
-    const x = a[sortKey], y = b[sortKey];
+    const x = metric(a, sortKey), y = metric(b, sortKey);
     if (x == null && y == null) return 0;
     if (x == null) return 1;
     if (y == null) return -1;
@@ -134,7 +150,7 @@ function renderTotals() {
       if (k === "label") {
         return "<td>" + esc(r.label) + (r.enabled === false ? ' <span class="hot">(campaign)</span>' : "") + "</td>";
       }
-      return "<td>" + (d == null ? esc(r[k]) : fmt(r[k], d)) + "</td>";
+      return "<td>" + (d == null ? esc(r[k]) : fmt(metric(r, k), d)) + "</td>";
     }).join("") + "</tr>").join("");
 }
 function sortBy(k) {
@@ -151,8 +167,8 @@ function renderMonthly() {
     "<tr><th>channel</th><th>month</th>" + cols.map(([, label]) => "<th>" + label + "</th>").join("") + "</tr>" +
     (rows.length ? rows.map(r =>
       "<tr><td>" + esc(r.label) + "</td><td>" + esc(String(r.month).slice(0, 7)) + "</td>" +
-      cols.map(([k, , d]) => "<td>" + (d == null ? esc(r[k]) : fmt(r[k], d)) + "</td>").join("") + "</tr>"
-    ).join("") : '<tr><td colspan="12" class="empty">No rows.</td></tr>');
+      cols.map(([k, , d]) => "<td>" + (d == null ? esc(r[k]) : fmt(metric(r, k), d)) + "</td>").join("") + "</tr>"
+    ).join("") : '<tr><td colspan="13" class="empty">No rows.</td></tr>');
 }
 
 // Burn pace: (used/quota) / elapsed-fraction. <0.5 low · ≤1 on pace ·
