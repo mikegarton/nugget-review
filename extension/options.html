@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nugget pipeline — options</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; background: #101114; color: #e8e8e6;
+         max-width: 560px; margin: 40px auto; padding: 0 16px; }
+  label { display: block; margin: 16px 0 4px; color: #9a9da5; font-size: 13px; }
+  input { width: 100%; padding: 9px 10px; font: inherit; border: 1px solid #2c3038;
+          border-radius: 8px; background: #1a1c21; color: #e8e8e6; box-sizing: border-box; }
+  button { margin-top: 16px; font: inherit; border: none; border-radius: 8px;
+           padding: 9px 16px; background: #5aa8f0; color: #08131f; cursor: pointer; }
+  .note { color: #6b6f78; font-size: 12.5px; margin-top: 10px; }
+  #saved { color: #6fc48d; margin-left: 10px; }
+</style>
+</head>
+<body>
+<h2>Nugget pipeline</h2>
+<label for="endpoint">yt-add endpoint (leave as-is unless the project moved)</label>
+<input id="endpoint" type="text"
+  placeholder="https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-add">
+<label for="key">Review key (same key as the nugget viewer bookmark)</label>
+<input id="key" type="password" placeholder="review key">
+<button id="save">Save</button><span id="saved"></span>
+<div class="note">Stored in this browser's extension storage only — never in the
+extension's source (public repo). Alt+Q sends the current tab's video;
+right-click any YouTube link for the context menu. The first 3 adds per hour
+jump the queue and process within ~5 minutes.</div>
+<script src="options.js"></script>
+</body>
+</html>

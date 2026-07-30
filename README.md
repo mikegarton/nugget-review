@@ -5,10 +5,18 @@ Phone-first review dashboard for the [nugget pipeline]
 Substack publications through one review loop. This repo is the **static
 shell only**, served by GitHub Pages (public + Pages enabled 2026-07-29):
 
-- `index.html` — the viewer (skim, rate, queue)
-- `ops.html` — burn rates, campaign yields, channel economics, live knobs
+- `index.html` — the viewer (skim, rate, queue; shows manual adds that
+  produced zero nuggets — you asked, so the answer is shown)
+- `ops.html` — burn rates, campaign yields, channel + per-source economics,
+  live knobs (marked knobs and per-source priority editable with the ops
+  write key; bounds enforced server-side, changes audited)
 - `home.html` — the public control room: links to every dashboard and
-  reference doc
+  reference doc, plus the paste box for sending YouTube links to the
+  pipeline (`yt-add`)
+- `extension/` — Chrome extension (MV3, load unpacked): Alt+Q sends the
+  current tab's video to the pipeline; right-click any YouTube link for the
+  context menu; badge counts today's adds. Endpoint + review key live in
+  the extension's own storage, never in this repo.
 
 It contains no data and no secrets: all data comes from the pipeline's
 key-gated `yt-review` Supabase function (JSON, CORS-enabled), and the key
@@ -72,7 +80,7 @@ Bookmark: `https://mikegarton.github.io/nugget-review/?key=<YT_REVIEW_KEY>`
   `yt_channel_hype` view, so it includes videos that yielded zero
   nuggets).
 - **Prospect** mode: nuggets from keyword campaigns (`yt-prospector`)
-  appear here and ONLY here — the trusted-channel views never see
+  appear here and ONLY here — the subscribed-channel views never see
   them. Stars keep one meaning everywhere ("I intend to watch this");
   the legend under the stars carries the standing reminder, and
   ratings feed the campaign's per-query yield stats.
@@ -86,7 +94,7 @@ Bookmark: `https://mikegarton.github.io/nugget-review/?key=<YT_REVIEW_KEY>`
   actions follow suit. Same stars, same meaning.
 - `ops.html` (same key): read-only ops page. **Burn rate** cards lead —
   each card names the resource AND the consumer: whole pipeline
-  (Supadata cycle), subscriptions (trusted channels' share after
+  (Supadata cycle), subscriptions (subscribed channels' share after
   campaign reservations), Claude $ (soft budget), and each campaign
   cap — used/quota with a pace ratio normalized by elapsed period,
   blue &lt;0.5× · green ≤1× · yellow ≤1.3× · red &gt;1.3×, tick =

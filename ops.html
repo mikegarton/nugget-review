@@ -55,7 +55,8 @@
 </head>
 <body>
 <h1>Nugget ops</h1>
-<div class="sub">Channel economics and campaign yields. Read-only — campaigns are edited in the SQL editor.</div>
+<div class="sub">Channel economics, campaign yields, sources, and knobs. Marked knobs are
+editable here with the ops write key; everything else is SQL-editor only.</div>
 <h2>Burn rate</h2>
 <div class="note" style="color:var(--dim);font-size:12.5px;border:none;padding:0;margin:0 0 8px">
 Each card names the resource being burned and who is burning it.
@@ -74,11 +75,19 @@ The tick on each bar marks where "exactly on pace" would be right now.</div>
 A query with finds but no ≥4★ after a couple of weeks is a candidate for retirement
 (<code>update yt_campaign_queries set active = false …</code>).</div>
 
+<h2>Sources — priority &amp; economics</h2>
+<div class="twrap"><table id="sources"></table></div>
+<div class="note">One integer per method of acquisition, lower = processed sooner,
+ties allowed; the queue tie-break is newest-published. Manual adds jump to
+priority 0 for the first 3 per hour. Priority is editable here with the ops
+write key. Sources are subscribed or discovered — provenance, not quality;
+nuggets are rated on merit.</div>
+
 <h2>Channel economics — lifetime</h2>
 <div class="twrap"><table id="totals"></table></div>
 <div class="note">Cost = Claude tokens + prorated Supadata credits, from the call log.
 Nugget counts are surviving nuggets (1★ rows are purged). Disabled channels are
-campaign discoveries, not part of the trusted poll list. Value rates are
+campaign discoveries or manual-add hosts, not part of the subscribed poll list. Value rates are
 per-dollar — nug/$ and 5★/$ — because substack costs run magnitudes below
 video costs and "nuggets per dollar" compares cleanly where "$0.00003 per
 nugget" reads as noise; bigger is better, like every density column. Substack
@@ -96,10 +105,12 @@ logging and show $0 (per-dollar rates blank). Tap a column header to sort.</div>
 <div class="twrap"><table id="knobs"></table></div>
 <div class="note">Every tunable number the pipeline runs on — batch pace,
 retry behavior, budgets, caps — live from the config table
-<code>yt_params</code>. Edit in the SQL editor —
-<code>update yt_params set value = '…' where key = '…';</code> — and the next
-run picks it up, no redeploy. This table is the surface a future control GUI
-will edit.</div>
+<code>yt_params</code>; the next run picks changes up, no redeploy.
+Rows marked ✎ are editable here: click the value, enter the ops write key once
+per session (kept in this tab only, never stored). Bounds are enforced
+server-side — the browser is never trusted. Everything else stays SQL-editor
+only: <code>update yt_params set value = '…' where key = '…';</code>
+Every change is audited in <code>yt_param_changes</code>.</div>
 
 <script>
 const BASE = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-review";
@@ -228,12 +239,20 @@ function render() {
       m.cycle_supadata_calls + " / " + m.supadata_allotment,
       m.cycle_supadata_calls, m.supadata_allotment, cycFrac,
       "Supadata credits this billing cycle · " + Math.round(cycFrac * 100) +
-      "% elapsed · resets " + String(m.supadata_cycle_end).slice(0, 10)));
-    // Subscriptions = the trusted stream's share: whole pipeline minus what
+      "% elapsed · resets " + String(m.supadata_cycle_end).slice(0, 10) +
+      " · $" + fmt(m.supadata_fee, 0) + "/cycle flat, unused credits expire"));
+    if (m.daily_cap != null) {
+      burn.push(burnCard("Transcript pulls — today's cap",
+        m.credits_used_today + " / " + m.daily_cap,
+        Number(m.credits_used_today) || 0, Number(m.daily_cap) || 1, 0.5,
+        "burn_multiplier × credits remaining ÷ days remaining, recomputed live — " +
+        "at the cap, YouTube pauses until tomorrow (UTC); substack keeps flowing"));
+    }
+    // Subscriptions = the subscribed stream's share: whole pipeline minus what
     // campaigns used, against the allotment minus campaign reservations.
     const campUsed = budgets.reduce((s, b) => s + (b.supadata_used_cycle || 0), 0);
     const campCap = budgets.reduce((s, b) => s + (b.supadata_cap_per_cycle || 0), 0);
-    burn.push(burnCard("Transcript pulls — subscriptions (trusted channels)",
+    burn.push(burnCard("Transcript pulls — subscribed channels",
       (m.cycle_supadata_calls - campUsed) + " / " + Math.max(0, m.supadata_allotment - campCap),
       m.cycle_supadata_calls - campUsed,
       Math.max(1, m.supadata_allotment - campCap), cycFrac,
@@ -242,11 +261,23 @@ function render() {
     const d = new Date();
     const monthFrac = Math.min(1, d.getDate() /
       new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate());
+    // Claude-only figure (mtd_claude_usd): the budget it's measured against is
+    // Claude-specific, so the number must be too. mtd_cost_usd blends in the
+    // amortized Supadata fee and belongs to the whole-pipeline framing.
+    const claudeUsd = m.mtd_claude_usd ?? m.mtd_cost_usd;
     burn.push(burnCard("AI reading & scoring — whole pipeline",
-      "$" + fmt(m.mtd_cost_usd, 2) + " / $" + budgetUsd,
-      Number(m.mtd_cost_usd) || 0, budgetUsd, monthFrac,
-      "Claude API dollars this month · " + Math.round(monthFrac * 100) +
+      "$" + fmt(claudeUsd, 2) + " / $" + budgetUsd,
+      Number(claudeUsd) || 0, budgetUsd, monthFrac,
+      "Claude API dollars this month (Claude only) · " + Math.round(monthFrac * 100) +
       "% elapsed · soft budget (yt_params) — nothing blocks at the cap"));
+    if (ops.killed_runs_7d != null) {
+      burn.push('<div class="bcard ' + (ops.killed_runs_7d > 0 ? "p-red" : "p-green") +
+        '"><b>Processor runs killed — 7 days</b>' +
+        '<div class="big">' + ops.killed_runs_7d + "</div>" +
+        '<div class="row">runs that started but never finished (wall-clock kill leaves no ' +
+        "other trace). Should be 0 at batch_size 1; if it isn't, a single item is " +
+        "exceeding the ~150 s edge budget.</div></div>");
+    }
   }
   budgets.forEach(b => {
     burn.push(burnCard('Transcript pulls — keyword campaign "' + b.name + '"',
@@ -279,15 +310,82 @@ function render() {
       "</td></tr>").join("") : '<tr><td colspan="8" class="empty">No campaign data yet.</td></tr>');
 
   renderTotals();
-
-  document.getElementById("knobs").innerHTML =
-    "<tr><th>key</th><th>value</th><th>what it does</th></tr>" +
-    ((ops.params || []).length ? (ops.params || []).map(p =>
-      "<tr><td>" + esc(p.key) + '</td><td style="color:var(--accent)">' + esc(p.value) +
-      "</td><td>" + esc(p.description) + "</td></tr>").join("")
-      : '<tr><td colspan="3" class="empty">yt_params not populated yet — run the 20260729 migration.</td></tr>');
+  renderSources();
+  renderKnobs();
 
   const months = [...new Set((ops.channel_monthly || []).map(r => r.month))].sort().reverse();
+  renderMonthSel(months);
+}
+
+function renderSources() {
+  const econ = new Map((ops.source_econ || []).map(s => [s.key, s]));
+  const rows = (ops.sources || []).map(s => {
+    const e = econ.get(s.key) || {};
+    return "<tr" + (s.enabled ? "" : ' style="opacity:.5"') + ">" +
+      '<td><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:' +
+        esc(s.color) + ';margin-right:6px"></span>' + esc(s.key) +
+        (s.enabled ? "" : ' <span class="hot">(off)</span>') + "</td>" +
+      "<td>" + esc(s.acquisition) + "</td><td>" + esc(s.platform) + "</td>" +
+      '<td class="editable" style="color:var(--accent);cursor:pointer" title="click to edit (ops write key)" ' +
+        "onclick=\"editLever('yt_sources','" + esc(s.key) + "'," + s.priority + ")\">" +
+        s.priority + " ✎</td>" +
+      "<td>" + (e.videos ?? 0) + "</td><td>" + (e.pending ?? 0) + "</td>" +
+      "<td>" + fmt(e.cost_usd, 2) + "</td><td>" + (e.nuggets ?? 0) + "</td>" +
+      "<td>" + (e.rated_ge4 ?? 0) + "</td><td>" + (e.five_star ?? 0) + "</td></tr>";
+  });
+  document.getElementById("sources").innerHTML =
+    "<tr><th>source</th><th>acquisition</th><th>platform</th><th>priority</th>" +
+    "<th>items</th><th>pending</th><th>$</th><th>nuggets</th><th>≥4★</th><th>5★</th></tr>" +
+    (rows.length ? rows.join("")
+      : '<tr><td colspan="10" class="empty">yt_sources not populated — run the 20260730 intake migration.</td></tr>');
+}
+
+function renderKnobs() {
+  document.getElementById("knobs").innerHTML =
+    "<tr><th>key</th><th>value</th><th>bounds</th><th>what it does</th></tr>" +
+    ((ops.params || []).length ? (ops.params || []).map(p => {
+      const bounds = p.editable
+        ? fmt(p.min_value, 0) + " – " + fmt(p.max_value, 0) : "—";
+      const val = p.editable
+        ? '<td class="editable" style="color:var(--accent);cursor:pointer" title="click to edit (ops write key)" ' +
+          "onclick=\"editLever('yt_params','" + esc(p.key) + "','" + esc(p.value) + "')\">" +
+          esc(p.value) + " ✎</td>"
+        : '<td style="color:var(--dim)">' + esc(p.value) + "</td>";
+      return "<tr><td>" + esc(p.key) + "</td>" + val +
+        "<td>" + bounds + "</td><td>" + esc(p.description) + "</td></tr>";
+    }).join("")
+      : '<tr><td colspan="4" class="empty">yt_params not populated yet — run the 20260729 migration.</td></tr>');
+}
+
+// Lever writes: separate stronger key, typed once per session on a computer,
+// held in this tab's sessionStorage only. Bounds enforced server-side.
+async function editLever(table, key, current) {
+  const next = prompt("New value for " + key + " (current: " + current + ")", current);
+  if (next == null || String(next).trim() === "" || String(next) === String(current)) return;
+  let opsKey = "";
+  try { opsKey = sessionStorage.getItem("ops_write_key") || ""; } catch (e) {}
+  if (!opsKey) {
+    opsKey = prompt("Ops write key (kept in this tab for this session only):") || "";
+    if (!opsKey) return;
+    try { sessionStorage.setItem("ops_write_key", opsKey); } catch (e) {}
+  }
+  try {
+    const res = await fetch(BASE + "/param?key=" + encodeURIComponent(KEY), {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-ops-key": opsKey },
+      body: JSON.stringify({ table, key, value: String(next).trim() }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (res.status === 401) { try { sessionStorage.removeItem("ops_write_key"); } catch (e) {} }
+      alert("Rejected: " + (data.error || res.status));
+      return;
+    }
+    load();
+  } catch (e) { alert("Network error: " + e); }
+}
+
+function renderMonthSel(months) {
   const sel = document.getElementById("monthSel");
   sel.innerHTML = '<option value="">all months</option>' + months.map(m =>
     '<option value="' + esc(m) + '">' + esc(String(m).slice(0, 7)) + "</option>").join("");

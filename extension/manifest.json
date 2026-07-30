@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Nugget pipeline — add video",
+  "version": "1.0",
+  "description": "Send the current YouTube video (or any YouTube link) to the nugget pipeline. Alt+Q on a watch page; right-click any thumbnail.",
+  "permissions": ["contextMenus", "storage", "notifications", "activeTab"],
+  "background": { "service_worker": "background.js" },
+  "options_page": "options.html",
+  "commands": {
+    "add-current-video": {
+      "suggested_key": { "default": "Alt+Q" },
+      "description": "Send the current tab's video to the nugget pipeline"
+    }
+  },
+  "icons": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" },
+  "action": { "default_title": "Nugget pipeline (badge = adds today)" }
+}

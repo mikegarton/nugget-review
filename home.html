@@ -41,6 +41,17 @@
 <p class="lede">Dashboards and reference docs, reachable from any device.
 This page holds no secrets: keys live only in each device's browser.</p>
 
+<h2>Add to the nugget pipeline</h2>
+<div class="setup" id="addbox" style="display:none">
+  <b>Paste YouTube links — one per line (or comma-separated)</b>
+  <textarea id="add-urls" rows="3" placeholder="https://www.youtube.com/watch?v=..."
+    style="width:100%;padding:9px 10px;font:inherit;margin:6px 0;border:1px solid var(--line);
+    border-radius:8px;background:var(--bg);color:var(--ink);resize:vertical"></textarea>
+  <button onclick="addVideos()">Send to pipeline</button>
+  <div class="note" id="add-result">The first 3 per hour jump the queue
+  (processed within ~5 min); the rest follow at manual priority.</div>
+</div>
+
 <h2>Dashboards — live instruments</h2>
 <div id="dash"></div>
 <div class="setup" id="setup" style="display:none">
@@ -95,6 +106,34 @@ function render() {
   }
   document.getElementById("dash").innerHTML = rows.join("");
   document.getElementById("setup").style.display = (key && vault) ? "none" : "block";
+  document.getElementById("addbox").style.display = key ? "block" : "none";
+}
+const ADD_URL = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-add";
+async function addVideos() {
+  const out = document.getElementById("add-result");
+  let key = "";
+  try { key = localStorage.getItem("cr_review_key") || ""; } catch (e) {}
+  const urls = document.getElementById("add-urls").value
+    .split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+  if (!key || urls.length === 0) { out.textContent = "Nothing to send."; return; }
+  out.textContent = "Sending " + urls.length + "…";
+  try {
+    const res = await fetch(ADD_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-review-key": key },
+      body: JSON.stringify({ urls }),
+    });
+    const data = await res.json();
+    if (!res.ok) { out.textContent = "Error: " + (data.error || res.status); return; }
+    const parts = [];
+    for (const r of data.results || []) {
+      if (r.status === "added") parts.push((r.priority === 0 ? "⚡ " : "✓ ") + esc(r.title || r.video_id));
+      else if (r.status === "already_have") parts.push("— already have " + esc(r.title || r.video_id));
+      else parts.push("✗ " + esc(r.input) + " (" + r.status + ")");
+    }
+    out.innerHTML = parts.join("<br>") || "Done.";
+    if (data.added > 0) document.getElementById("add-urls").value = "";
+  } catch (e) { out.textContent = "Network error: " + e; }
 }
 function save() {
   try {

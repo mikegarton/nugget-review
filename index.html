@@ -136,6 +136,7 @@ const MODES = [["comfort","Comfort"],["stretch","Stretch"],["newest","Newest"],[
 const SCALE = { 1: "never gonna look (deleted after a day)", 2: "unlikely to use",
   3: "neutral / did not regret", 4: "good", 5: "outstanding" };
 let all = [], slope = 0, intercept = 0;
+let manualEmpty = []; // manual adds analyzed with zero nuggets — honest feedback
 let channelHype = new Map(); // label -> avg hype level, from the review payload
 let state = Object.assign(
   { mode: "comfort", channel: "", domain: "", type: "", vstate: "open", age: "", group: true },
@@ -175,8 +176,9 @@ function regress() {
 function visible() {
   // "open" = still actionable: not yet both rated and watched, and not
   // dismissed with a low rating (1-2 hides it, watched or not).
-  // Prospect quarantine: campaign nuggets appear ONLY in Prospect mode, so
-  // keyword-mined material never dilutes the trusted-channel views.
+  // Prospect quarantine: campaign nuggets appear ONLY in Prospect mode —
+  // separated by provenance (keyword-mined vs subscribed/manual), never by
+  // any quality judgment; nuggets are rated on merit.
   const pass = (n) =>
     (state.mode === "prospect" ? n.campaignId != null : n.campaignId == null) &&
     (!state.channel || n.channelLabel === state.channel) &&
@@ -213,8 +215,32 @@ function render() {
     " · edge stripe = " + (stripeDim() === "personal" ? "your taste" : "mentor") + " score (green 75+, gold 85+)";
   document.getElementById("gToggle").className = state.group ? "on" : "";
   const list = document.getElementById("list");
-  if (!v.length) { list.innerHTML = '<div class="empty">Nothing here.</div>'; return; }
-  list.innerHTML = state.group ? grouped(v) : v.map(card).join("");
+  const me = manualEmptyHtml();
+  if (!v.length) { list.innerHTML = me + '<div class="empty">Nothing here.</div>'; return; }
+  list.innerHTML = me + (state.group ? grouped(v) : v.map(card).join(""));
+}
+
+// Manual adds that were analyzed and produced ZERO nuggets. You explicitly
+// asked for the analysis, so the answer is shown even when it's "nothing
+// worth keeping" — the only honest feedback signal on the extractor.
+// Manual sources only; the archive's misses would drown the view.
+function manualEmptyHtml() {
+  if (!manualEmpty.length || state.mode === "prospect") return "";
+  const rows = manualEmpty.map(v => {
+    const label = v.yt_channels?.label || "?";
+    const link = v.url || "https://www.youtube.com/watch?v=" + v.video_id;
+    const verdict = v.status === "processed" ? "analyzed — no nuggets found"
+      : v.status === "no_transcript" ? "no transcript available"
+      : "failed: " + esc((v.error_detail || v.status).slice(0, 80));
+    return '<div style="margin-top:4px">' +
+      '<a href="' + esc(link) + '" target="_blank" rel="noopener" style="color:var(--ink)">' +
+      esc(v.plain_title || v.title || v.video_id) + "</a>" +
+      ' <span style="color:var(--faint)">· ' + esc(label) + " · " + verdict + "</span></div>";
+  });
+  return '<div class="card" style="border-left:4px solid var(--faint)">' +
+    '<div style="font-size:12.5px;color:var(--dim)"><b>Your manual adds — ' +
+    manualEmpty.length + " with nothing to show</b> (you asked, so here's the answer)</div>" +
+    rows.join("") + "</div>";
 }
 
 // Group multi-nugget videos under a header; singletons stay plain cards.
@@ -363,6 +389,8 @@ function card(n) {
       (n.domain ? '<span class="chip">' + esc(n.domain) + "</span>" : "") +
       (n.nugget_type ? '<span class="chip">' + esc(n.nugget_type) + "</span>" : "") +
       (isPost ? '<span class="chip">substack</span>' : "") +
+      (n.sourceKey && n.sourceKey.endsWith("_manual")
+        ? '<span class="chip" style="color:var(--accent)">manual add</span>' : "") +
       '<span class="score p">P' + Math.round(n.personal_score) + "</span>" +
       '<span class="score e">E' + Math.round(n.expert_score) + "</span>" + res +
       (n.rating ? '<span class="chip" style="color:var(--gold)">&#9733;' + n.rating + "</span>" : "") +
@@ -509,6 +537,7 @@ async function load() {
   }
   const data = await res.json();
   renderStatus(data.status);
+  manualEmpty = data.manual_empty || [];
   all = (data.nuggets || []).map(n => ({
     ...n,
     channelLabel: n.yt_videos?.yt_channels?.label || n.yt_videos?.channel_id || "?",
@@ -517,6 +546,7 @@ async function load() {
     hypeLevel: n.yt_videos?.hype_level ?? null,
     campaignId: n.yt_videos?.campaign_id ?? null,
     source: n.yt_videos?.source || "youtube",
+    sourceKey: n.yt_videos?.source_key || null,
     contentUrl: n.yt_videos?.url || null,
     publishedAt: n.yt_videos?.published_at,
     durationSeconds: n.yt_videos?.duration_seconds ?? null,
