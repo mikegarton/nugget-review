@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mike's control room</title>
+<style>
+  :root {
+    --bg: #101114; --panel: #1a1c21; --line: #2c3038;
+    --ink: #e8e8e6; --dim: #9a9da5; --blue: #5aa8f0; --gold: #e0b34e;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f7f6f2; --panel: #ffffff; --line: #dcd9d1;
+      --ink: #23221e; --dim: #5d5a52; --blue: #2c6e91; --gold: #8a6a1c; }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--ink);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 26px 16px 60px; max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  .lede { color: var(--dim); font-size: 14px; margin-bottom: 20px; }
+  h2 { font-size: 13.5px; letter-spacing: .08em; text-transform: uppercase;
+       color: var(--dim); margin: 24px 0 8px; }
+  a.row { display: block; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 12px 15px; margin-bottom: 8px;
+    text-decoration: none; color: var(--ink); }
+  a.row b { color: var(--blue); }
+  a.row span { display: block; color: var(--dim); font-size: 13.5px; }
+  .row.off { opacity: .55; }
+  .setup { background: var(--panel); border: 1px dashed var(--line); border-radius: 12px;
+    padding: 12px 15px; margin: 10px 0; font-size: 14px; }
+  .setup input { width: 100%; padding: 9px 10px; font: inherit; margin: 6px 0;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
+  .setup button { font: inherit; border: none; border-radius: 8px; padding: 9px 14px;
+    background: var(--blue); color: var(--bg); cursor: pointer; }
+  .note { color: var(--dim); font-size: 12.5px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<h1>Mike's control room</h1>
+<p class="lede">Dashboards and reference docs, reachable from any device.
+This page holds no secrets: keys live only in each device's browser.</p>
+
+<h2>Dashboards — live instruments</h2>
+<div id="dash"></div>
+<div class="setup" id="setup" style="display:none">
+  <b>One-time setup on this device</b>
+  <div class="note">The review key is the one from your nugget bookmark; the vault
+  URL is the Apps Script web-app link. Stored in this browser's local storage
+  only — never sent anywhere, never in this page's source.</div>
+  <input type="password" id="in-key" placeholder="review key (viewer + ops)">
+  <input type="text" id="in-vault" placeholder="Item Vault web app URL (optional)">
+  <button onclick="save()">Save links on this device</button>
+</div>
+<a class="row" href="https://supabase.com/dashboard/project/zowilxlpldqxtotrvekd" target="_blank" rel="noopener">
+  <b>Supabase project</b><span>SQL editor, functions, advisor (login)</span></a>
+
+<h2>Reference docs — Claude login</h2>
+<a class="row" href="https://claude.ai/code/artifact/24bf2b13-67b5-464c-92ee-6151a5b57eaf" target="_blank" rel="noopener">
+  <b>Limits &amp; costs chart</b><span>every quota, wall, and knob</span></a>
+<a class="row" href="https://claude.ai/code/artifact/928a7573-29bb-4857-99c4-5c34f2d6ed79" target="_blank" rel="noopener">
+  <b>Which AI surface for this?</b><span>the decision tree</span></a>
+<a class="row" href="https://claude.ai/code/artifact/2aefa9d9-a834-4045-a5a7-7a713fce39e9" target="_blank" rel="noopener">
+  <b>Open Brain — key rotation runbook</b><span>when a key needs replacing</span></a>
+<a class="row" href="https://github.com/mikegarton/yt-nugget-pipeline/blob/main/docs/LIMITS.md" target="_blank" rel="noopener">
+  <b>LIMITS.md</b><span>versioned source of truth, auto-verified monthly (GitHub login)</span></a>
+
+<h2>Automation</h2>
+<a class="row" href="https://claude.ai/code/routines" target="_blank" rel="noopener">
+  <b>Cloud routines</b><span>the monthly limits auditor reports here (Claude login)</span></a>
+
+<script>
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g,
+    c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function render() {
+  let key = "", vault = "";
+  try { key = localStorage.getItem("cr_review_key") || "";
+        vault = localStorage.getItem("cr_vault_url") || ""; } catch (e) {}
+  const rows = [];
+  if (key) {
+    rows.push('<a class="row" href="index.html?key=' + encodeURIComponent(key) +
+      '"><b>Nugget viewer</b><span>skim, rate, queue — Comfort / Stretch / Queue / Prospect</span></a>');
+    rows.push('<a class="row" href="ops.html?key=' + encodeURIComponent(key) +
+      '"><b>Nugget ops</b><span>burn rate, campaign yields, channel economics, knobs</span></a>');
+  } else {
+    rows.push('<div class="row off"><b>Nugget viewer + ops</b><span>enter the review key below to activate on this device</span></div>');
+  }
+  if (vault) {
+    rows.push('<a class="row" href="' + esc(vault) +
+      '" target="_blank" rel="noopener"><b>Item Vault — the app</b><span>add, review, file, find (household PIN)</span></a>');
+  } else {
+    rows.push('<div class="row off"><b>Item Vault — the app</b><span>paste the web-app URL below to activate</span></div>');
+  }
+  document.getElementById("dash").innerHTML = rows.join("");
+  document.getElementById("setup").style.display = (key && vault) ? "none" : "block";
+}
+function save() {
+  try {
+    const k = document.getElementById("in-key").value.trim();
+    const v = document.getElementById("in-vault").value.trim();
+    if (k) localStorage.setItem("cr_review_key", k);
+    if (v) localStorage.setItem("cr_vault_url", v);
+  } catch (e) {}
+  render();
+}
+render();
+</script>
+</body>
+</html>
