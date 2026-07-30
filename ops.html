@@ -82,8 +82,10 @@ campaign discoveries, not part of the trusted poll list. Value rates are
 per-dollar — nug/$ and 5★/$ — because substack costs run magnitudes below
 video costs and "nuggets per dollar" compares cleanly where "$0.00003 per
 nugget" reads as noise; bigger is better, like every density column. Substack
-transcript/minutes columns are legitimately blank; nug/item is the density
-metric both sources share. Channels processed before 2026-07-25 predate cost
+transcript/minutes columns are legitimately blank; nug/item and **nug/kw**
+(nuggets per 1,000 words of transcript or post) are the density metrics both
+sources share — nug/kw counts only items processed since word counting began
+(2026-07-30), on both sides of the ratio. Channels processed before 2026-07-25 predate cost
 logging and show $0 (per-dollar rates blank). Tap a column header to sort.</div>
 
 <h2>Channel economics — by month</h2>
@@ -124,6 +126,7 @@ const TOTAL_COLS = [
   ["nug_per_usd", "nug/$", 0],
   ["five_star_per_usd", "5★/$", 1],
   ["nug_per_item", "nug/item", 2],
+  ["nug_per_kword", "nug/kw", 2],
   ["nuggets_per_transcript_minute", "nug/min", 3],
 ];
 
@@ -135,6 +138,9 @@ function metric(r, k) {
   if (k === "nug_per_usd") return r.cost_usd > 0 ? r.nuggets / r.cost_usd : null;
   if (k === "five_star_per_usd") return r.cost_usd > 0 ? r.five_star / r.cost_usd : null;
   if (k === "nug_per_item") return r.videos_processed > 0 ? r.nuggets / r.videos_processed : null;
+  // Word density is self-consistent: worded nuggets over worded kilowords,
+  // so items processed before word counting existed pollute neither side.
+  if (k === "nug_per_kword") return r.kwords > 0 ? r.worded_nuggets / r.kwords : null;
   return r[k];
 }
 
