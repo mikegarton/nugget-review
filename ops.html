@@ -134,6 +134,12 @@ const TOTAL_COLS = [
 // 0.001-0.00001 range reads as noise, while "381 nuggets per dollar" is a
 // number a human can compare. Computed from raw cost, not the server's
 // 4-decimal rounding. Bigger = better, matching every other density metric.
+function sourceHtml(v) {
+  return v === "substack"
+    ? '<span style="color:var(--accent)">substack</span>'
+    : '<span style="color:var(--dim)">' + esc(v || "") + "</span>";
+}
+
 function metric(r, k) {
   if (k === "nug_per_usd") return r.cost_usd > 0 ? r.nuggets / r.cost_usd : null;
   if (k === "five_star_per_usd") return r.cost_usd > 0 ? r.five_star / r.cost_usd : null;
@@ -160,6 +166,7 @@ function renderTotals() {
       if (k === "label") {
         return "<td>" + esc(r.label) + (r.enabled === false ? ' <span class="hot">(campaign)</span>' : "") + "</td>";
       }
+      if (k === "source") return "<td>" + sourceHtml(r.source) + "</td>";
       return "<td>" + (d == null ? esc(r[k]) : fmt(metric(r, k), d)) + "</td>";
     }).join("") + "</tr>").join("");
 }
@@ -177,7 +184,8 @@ function renderMonthly() {
     "<tr><th>channel</th><th>month</th>" + cols.map(([, label]) => "<th>" + label + "</th>").join("") + "</tr>" +
     (rows.length ? rows.map(r =>
       "<tr><td>" + esc(r.label) + "</td><td>" + esc(String(r.month).slice(0, 7)) + "</td>" +
-      cols.map(([k, , d]) => "<td>" + (d == null ? esc(r[k]) : fmt(metric(r, k), d)) + "</td>").join("") + "</tr>"
+      cols.map(([k, , d]) => k === "source" ? "<td>" + sourceHtml(r.source) + "</td>"
+        : "<td>" + (d == null ? esc(r[k]) : fmt(metric(r, k), d)) + "</td>").join("") + "</tr>"
     ).join("") : '<tr><td colspan="13" class="empty">No rows.</td></tr>');
 }
 
