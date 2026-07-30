@@ -182,6 +182,7 @@ function burnCard(name, usedText, used, quota, elapsed, sub) {
 function render() {
   const m = ops.month;
   const pmap = new Map((ops.params || []).map(p => [p.key, p.value]));
+  const budgets = ops.campaign_budget || [];
   const burn = [];
   const now = Date.now();
   let cycFrac = 0.5;
@@ -194,6 +195,15 @@ function render() {
       m.cycle_supadata_calls, m.supadata_allotment, cycFrac,
       "Supadata credits this billing cycle · " + Math.round(cycFrac * 100) +
       "% elapsed · resets " + String(m.supadata_cycle_end).slice(0, 10)));
+    // Subscriptions = the trusted stream's share: whole pipeline minus what
+    // campaigns used, against the allotment minus campaign reservations.
+    const campUsed = budgets.reduce((s, b) => s + (b.supadata_used_cycle || 0), 0);
+    const campCap = budgets.reduce((s, b) => s + (b.supadata_cap_per_cycle || 0), 0);
+    burn.push(burnCard("Transcript pulls — subscriptions (trusted channels)",
+      (m.cycle_supadata_calls - campUsed) + " / " + Math.max(0, m.supadata_allotment - campCap),
+      m.cycle_supadata_calls - campUsed,
+      Math.max(1, m.supadata_allotment - campCap), cycFrac,
+      "the credits left for subscribed channels after campaign reservations"));
     const budgetUsd = Number(pmap.get("claude_budget_usd_month")) || 20;
     const d = new Date();
     const monthFrac = Math.min(1, d.getDate() /
@@ -204,7 +214,6 @@ function render() {
       "Claude API dollars this month · " + Math.round(monthFrac * 100) +
       "% elapsed · soft budget (yt_params) — nothing blocks at the cap"));
   }
-  const budgets = ops.campaign_budget || [];
   budgets.forEach(b => {
     burn.push(burnCard('Transcript pulls — keyword campaign "' + b.name + '"',
       b.supadata_used_cycle + " / " + b.supadata_cap_per_cycle,

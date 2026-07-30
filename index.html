@@ -373,12 +373,20 @@ function rnote(n) {
 function setMode(m) { pinned.clear(); state.mode = m; save(); render(); }
 function toggle(id) { openId = openId === id ? null : id; render(); }
 
+// A failed save must never look like a successful one: any non-OK response
+// or network failure announces itself instead of silently dropping the write.
 async function post(path, body) {
-  await fetch(BASE + path + "?key=" + encodeURIComponent(KEY), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  try {
+    const res = await fetch(BASE + path + "?key=" + encodeURIComponent(KEY), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+  } catch (e) {
+    alert("NOT SAVED (" + path + "): " + e.message +
+      "\nThe change you just made was not stored - reload and retry.");
+  }
 }
 async function rate(id, k) {
   const n = all.find(x => x.id === id);
