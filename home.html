@@ -151,6 +151,12 @@ function save() {
   render();
 }
 render();
+// PWA registration: installing this page ("Add to Home screen" in Android
+// Chrome) puts "Nuggets" in the share sheet — YouTube app: Share -> Nuggets
+// sends the video to the pipeline (share.html handles it). See capture.html.
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(function () {});
+}
 </script>
 </body>
 </html>

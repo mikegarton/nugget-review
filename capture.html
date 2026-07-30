@@ -49,11 +49,12 @@ All three feed the same intake; pick whichever is nearest to hand.</p>
 <table>
 <tr><th>Surface</th><th>Effort</th><th>Works from</th><th>Latency</th></tr>
 <tr><td>Chrome extension</td><td>1 keystroke</td><td>desktop Chrome</td><td>~5 min</td></tr>
+<tr><td>Share sheet</td><td>2 taps</td><td>Android phone/tablet (YouTube app)</td><td>~5 min</td></tr>
 <tr><td>Paste box (<a href="home.html">control room</a>)</td><td>paste many</td><td>any browser</td><td>~5 min</td></tr>
 <tr><td>Playlist inbox</td><td>2–3 taps</td><td>any YouTube app — Shield, phone, tablet, TV</td><td>up to ~1 h</td></tr>
 </table>
 <p class="note"><b>Priority:</b> the first 3 manual adds per hour (counted across
-all three surfaces) jump to the front of the processing queue; the rest still
+all surfaces) jump to the front of the processing queue; the rest still
 run ahead of every automatic source. If nothing worth keeping is found, the
 video appears in the viewer's "your manual adds" strip — you asked, so the
 answer is shown either way.</p>
@@ -93,6 +94,37 @@ answer is shown either way.</p>
     won't auto-update — refresh the folder (git pull / re-download) to update.</li>
   <li>If Alt+Q doesn't fire, another extension owns the shortcut — reassign at
     <code>chrome://extensions/shortcuts</code>.</li>
+</ul>
+
+<h2>Share sheet <span class="tag">Android phone/tablet</span></h2>
+<p>Installs the control room as an app; "Nuggets" then appears in Android's
+share sheet, so the YouTube app's own Share button becomes the capture
+surface.</p>
+
+<h3>Set up (once per Android device)</h3>
+<ol>
+  <li>In Chrome on the phone, open the <a href="home.html">control room</a> and
+    make sure the review key is saved there (the viewer/ops links show when it
+    is — the share handler uses the same saved key).</li>
+  <li>Chrome menu (&#8942;) &rarr; <b>Add to Home screen</b> &rarr; <b>Install</b>.
+    (If Chrome offers an "Install app" banner, that's the same thing.)</li>
+</ol>
+
+<h3>Use</h3>
+<ul>
+  <li>In the YouTube app, on any video: <b>Share</b> &rarr; <b>Nuggets</b>.
+    A page opens, sends it, and shows the verdict — &#9889; front of the queue,
+    &#10003; added, &mdash; already known. Two taps, ~5-minute latency.</li>
+</ul>
+
+<h3>Limitations</h3>
+<ul class="note">
+  <li>Android only — iOS Safari doesn't support web share targets (on an
+    iPhone/iPad, use the playlist inbox instead).</li>
+  <li>The share sheet entry appears only after the install step; a plain
+    bookmark isn't enough.</li>
+  <li>If the verdict page says "No review key on this device", do step 1 —
+    key first, then share works.</li>
 </ul>
 
 <h2>Playlist inbox <span class="tag">Shield · phone · tablet · any TV</span></h2>
