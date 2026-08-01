@@ -111,6 +111,7 @@
       <option value="180">&#8804; 6 months</option>
       <option value="365">&#8804; 1 year</option>
     </select>
+    <button id="fManual" title="only manual adds, newest added first">my adds</button>
     <button id="gToggle" title="group nuggets by video">by video</button>
     <button id="zoomOut" title="smaller text">A&#8722;</button>
     <button id="zoomIn" title="larger text">A+</button>
@@ -139,7 +140,8 @@ let all = [], slope = 0, intercept = 0;
 let manualEmpty = []; // manual adds analyzed with zero nuggets — honest feedback
 let channelHype = new Map(); // label -> avg hype level, from the review payload
 let state = Object.assign(
-  { mode: "comfort", channel: "", domain: "", type: "", vstate: "open", age: "", group: true },
+  { mode: "comfort", channel: "", domain: "", type: "", vstate: "open", age: "",
+    group: true, manual: false },
   JSON.parse(localStorage.getItem("ytr") || "{}"));
 let openId = null;
 let collapsed = new Set(); // collapsed video groups; per page-load, like openId
@@ -181,6 +183,7 @@ function visible() {
   // any quality judgment; nuggets are rated on merit.
   const pass = (n) =>
     (state.mode === "prospect" ? n.campaignId != null : n.campaignId == null) &&
+    (!state.manual || (n.sourceKey && n.sourceKey.endsWith("_manual"))) &&
     (!state.channel || n.channelLabel === state.channel) &&
     (!state.domain || n.domain === state.domain) &&
     (!state.type || n.nugget_type === state.type) &&
@@ -192,6 +195,12 @@ function visible() {
     (state.vstate !== "watched" || n.watched_at) &&
     (state.mode !== "queue" || (n.rating >= 4 && !n.watched_at));
   const v = all.filter(n => pass(n) || pinned.has(n.id));
+  // "my adds" overrides the mode sort: newest ADDED first (discovered_at) —
+  // the one view where "when did I send this" outranks publish date.
+  if (state.manual) {
+    v.sort((a, b) => new Date(b.discoveredAt || b.created_at) - new Date(a.discoveredAt || a.created_at));
+    return v;
+  }
   if (state.mode === "queue") {
     v.sort((a,b) => (b.rating - a.rating) || (b.personal_score - a.personal_score));
   } else if (state.mode === "comfort" || state.mode === "prospect") {
@@ -210,10 +219,12 @@ function render() {
   ).join("");
   const v = visible();
   document.getElementById("count").textContent =
-    v.length + " nuggets" + (state.mode === "stretch" ? " — sorted by how much the mentor disagrees with your taste"
+    v.length + " nuggets" + (state.manual ? " — your manual adds, newest added first"
+      : state.mode === "stretch" ? " — sorted by how much the mentor disagrees with your taste"
       : state.mode === "prospect" ? " — keyword prospects: rate what you'd actually watch" : "") +
     " · edge stripe = " + (stripeDim() === "personal" ? "your taste" : "mentor") + " score (green 75+, gold 85+)";
   document.getElementById("gToggle").className = state.group ? "on" : "";
+  document.getElementById("fManual").className = state.manual ? "on" : "";
   const list = document.getElementById("list");
   const me = manualEmptyHtml();
   if (!v.length) { list.innerHTML = me + '<div class="empty">Nothing here.</div>'; return; }
@@ -547,6 +558,7 @@ async function load() {
     campaignId: n.yt_videos?.campaign_id ?? null,
     source: n.yt_videos?.source || "youtube",
     sourceKey: n.yt_videos?.source_key || null,
+    discoveredAt: n.yt_videos?.discovered_at || null,
     contentUrl: n.yt_videos?.url || null,
     publishedAt: n.yt_videos?.published_at,
     durationSeconds: n.yt_videos?.duration_seconds ?? null,
@@ -574,6 +586,9 @@ async function load() {
   bindFilter("fAge", "age");
   document.getElementById("gToggle").onclick = () => {
     state.group = !state.group; save(); render();
+  };
+  document.getElementById("fManual").onclick = () => {
+    pinned.clear(); state.manual = !state.manual; save(); render();
   };
   document.getElementById("zoomIn").onclick = () => zoomStep(1);
   document.getElementById("zoomOut").onclick = () => zoomStep(-1);
