@@ -91,6 +91,21 @@ priority 0 for the first 3 per hour. Priority is editable here with the ops
 write key. Sources are subscribed or discovered — provenance, not quality;
 nuggets are rated on merit.</div>
 
+<h2>Category tags — coverage &amp; TTL</h2>
+<div class="twrap"><table id="tags"></table></div>
+<div class="note">Nuggets carry ordered category tags, primary first (since
+2026-08-06; older nuggets show their legacy type instead). <b>Primary</b> is
+the tag in position one — the only tag counted where totals must equal sums,
+like cost attribution. <b>Coverage</b> = share of categorized nuggets carrying
+the tag in any position; because tags are multiple, coverage sums exceed 100%
+by design. A tag above ~60% coverage presumptively isn't earning its keep —
+<i>unless</i> it stratifies (rare on most sources, dominant on a few; filter
+on it in the viewer and see whether it separates channels). Human call, not a
+rule. <b>TTL</b> is the tag's soft-expiry window: unrated nuggets outlive the
+longest TTL among their tags and drop out of "open" (rows kept — the viewer's
+Expired chip lists them; rating a nugget exempts it for good). TTL edits are
+SQL-editor only: <code>update yt_categories set ttl_days = … where key = '…';</code></div>
+
 <h2>Channel economics — lifetime</h2>
 <div class="twrap"><table id="totals"></table></div>
 <div class="note">Columns: identity, then prime value rates, then quality scores, then volume.
@@ -374,6 +389,7 @@ function render() {
 
   renderTotals();
   renderSources();
+  renderTags();
   renderKnobs();
 
   const months = [...new Set((ops.channel_monthly || []).map(r => r.month))].sort().reverse();
@@ -404,6 +420,23 @@ function renderSources() {
     "<th>items</th><th>pending</th><th>$</th><th>nuggets</th><th>≥4★</th><th>5★</th></tr>" +
     (rows.length ? rows.join("")
       : '<tr><td colspan="12" class="empty">yt_sources not populated — run the 20260730 intake migration.</td></tr>');
+}
+
+// Tag coverage: the fluff detector. >60% coverage gets flagged; the
+// stratification exception (see the note above the table) stays a human
+// judgment, so the flag is a color, never a filter.
+function renderTags() {
+  const t = ops.tag_coverage || [];
+  document.getElementById("tags").innerHTML =
+    "<tr><th>tag</th><th>TTL (days)</th><th>nuggets</th><th>primary</th><th>coverage</th></tr>" +
+    (t.length ? t.map(r =>
+      "<tr><td>" + esc(r.tag) + "</td>" +
+      "<td>" + r.ttl_days + "</td>" +
+      "<td>" + (r.nuggets ?? 0) + "</td>" +
+      "<td>" + (r.primary_nuggets ?? 0) + "</td>" +
+      '<td class="' + (Number(r.coverage_pct) > 60 ? "p-yellow" : "") + '">' +
+        fmt(r.coverage_pct, 1) + "%</td></tr>").join("")
+      : '<tr><td colspan="5" class="empty">No categorized nuggets yet — the tag table fills as the processor runs post-migration.</td></tr>');
 }
 
 // Plain-language names for the knobs (the raw key stays visible underneath —

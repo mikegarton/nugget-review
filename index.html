@@ -20,23 +20,26 @@
     position: sticky; top: 0; z-index: 5; background: var(--bg);
     border-bottom: 1px solid var(--line); padding: 8px 10px 6px;
   }
-  .modes { display: flex; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .modes button {
+  /* One horizontally scrollable row per choice group (scope / category /
+     controls), chips frequency-ordered from the left — the Android
+     large-font finger-drag pattern that already worked for modes. */
+  .chips { display: flex; gap: 6px; margin-top: 6px; overflow-x: auto;
+           -webkit-overflow-scrolling: touch; align-items: center; }
+  .chips:first-child { margin-top: 0; }
+  .chips button {
     flex: none; border: 1px solid var(--line); background: var(--card);
     color: var(--dim); border-radius: 16px; padding: 6px 14px; font-size: 14px;
   }
-  .modes button.on { background: var(--accent); border-color: var(--accent); color: #08131f; font-weight: 600; }
-  .filters { display: flex; gap: 6px; margin-top: 6px; overflow-x: auto; }
-  .filters select {
+  .chips button.on { background: var(--accent); border-color: var(--accent); color: #08131f; font-weight: 600; }
+  .chips button.util { border-radius: 8px; padding: 4px 10px; font-size: 13px; }
+  .chips button.util.on { background: var(--card); color: var(--accent); border-color: var(--accent); font-weight: 400; }
+  .chips select {
     flex: none; background: var(--card); color: var(--dim);
     border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; font-size: 13px;
     max-width: 40vw;
   }
-  .filters button {
-    flex: none; background: var(--card); color: var(--dim);
-    border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; font-size: 13px;
-  }
-  .filters button.on { color: var(--accent); border-color: var(--accent); }
+  /* Visual seam between choice groups sharing a row. */
+  .chips .gap { flex: none; border-left: 1px solid var(--line); height: 22px; margin: 0 2px; }
   #count { font-size: 12px; color: var(--faint); margin-top: 5px; }
   #status { font-size: 12px; margin-top: 4px; display: none; }
   #status.quiet { display: block; color: var(--good); }
@@ -98,11 +101,12 @@
 </head>
 <body>
 <header>
-  <div class="modes" id="modes"></div>
-  <div class="filters">
-    <select id="fChannel"><option value="">channel</option></select>
-    <select id="fDomain"><option value="">domain</option></select>
-    <select id="fType"><option value="">type</option></select>
+  <div class="chips">
+    <select id="fDomain"><option value="">all domains</option></select>
+    <select id="fSource" title="particular source within the selected type"><option value="">all sources</option></select>
+    <span class="gap"></span>
+    <span id="scopeChips" style="display:contents"></span>
+    <span class="gap"></span>
     <select id="fAge">
       <option value="">any age</option>
       <option value="2">&#8804; 2 days</option>
@@ -111,17 +115,18 @@
       <option value="180">&#8804; 6 months</option>
       <option value="365">&#8804; 1 year</option>
     </select>
-    <button id="fManual" title="only manual adds, newest added first">my adds</button>
-    <button id="gToggle" title="group nuggets by video">by video</button>
-    <button id="zoomOut" title="smaller text">A&#8722;</button>
-    <button id="zoomIn" title="larger text">A+</button>
-    <select id="fState">
-      <option value="open">open</option>
-      <option value="">any state</option>
-      <option value="unrated">unrated</option>
-      <option value="unwatched">unwatched</option>
-      <option value="watched">watched</option>
-    </select>
+  </div>
+  <div class="chips" id="catRow"></div>
+  <div class="chips">
+    <span id="sortChips" style="display:contents"></span>
+    <span class="gap"></span>
+    <span id="stateChips" style="display:contents"></span>
+    <span class="gap"></span>
+    <span id="rateChips" style="display:contents"></span>
+    <span class="gap"></span>
+    <button id="gToggle" class="util" title="group nuggets by video">by video</button>
+    <button id="zoomOut" class="util" title="smaller text">A&#8722;</button>
+    <button id="zoomIn" class="util" title="larger text">A+</button>
   </div>
   <div id="count"></div>
   <div id="status"></div>
@@ -132,17 +137,30 @@
 // function below; the key lives only in the bookmark's ?key= parameter.
 const BASE = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-review";
 const KEY = new URLSearchParams(location.search).get("key");
-const MODES = [["comfort","Comfort"],["stretch","Stretch"],["newest","Newest"],["queue","Queue"],["prospect","Prospect"]];
+// Modes are gone (2026-08-06): the old Comfort/Stretch/Newest/Queue/Prospect
+// buttons conflated scope, sort, and judgment state. Three orthogonal chip
+// groups replace them; campaign gets NO special treatment (quarantine
+// retired); Queue = state:unwatched + rating:>=4 + sort:rating by hand.
+const SCOPES = [["","All"],["subs","Subs"],["substack","Substack"],["manual","My adds"],["campaign","Campaign"]];
+const SORTS  = [["taste","Taste"],["stretch","Stretch"],["newest","Newest"],["rating","Rating"],["added","Added"]];
+const STATES = [["open","Open"],["unrated","Unrated"],["unwatched","Unwatched"],["watched","Watched"],["expired","Expired"],["","Any"]];
+const RATEFS = [["","Any &#9733;"],["4","&#8805;4 &#9733;"],["5","5 &#9733;"]];
 // yt_nuggets.rating column comment is the source of truth for this scale.
 const SCALE = { 1: "never gonna look (deleted after a day)", 2: "unlikely to use",
   3: "neutral / did not regret", 4: "good", 5: "outstanding" };
 let all = [], slope = 0, intercept = 0;
+// Per-category TTLs from /data; unrated nuggets older than the MAX TTL over
+// their tags soft-expire out of "open" (rows kept — see the Expired chip).
+// Legacy nuggets (no categories) present nugget_type as a pseudo-category.
+let catTtls = {}, defaultTtl = 180, catList = [];
 let manualEmpty = []; // manual adds analyzed with zero nuggets — honest feedback
 let channelHype = new Map(); // label -> avg hype level, from the review payload
+// Storage key bumped ytr -> ytr2: the state shape changed (mode/channel/type
+// replaced by scope/src/cat/sort/ratef), so stale saved state is ignored.
 let state = Object.assign(
-  { mode: "comfort", channel: "", domain: "", type: "", vstate: "open", age: "",
-    group: true, manual: false },
-  JSON.parse(localStorage.getItem("ytr") || "{}"));
+  { scope: "", src: "", cat: "", domain: "", age: "", vstate: "open",
+    ratef: "", sort: "taste", group: true },
+  JSON.parse(localStorage.getItem("ytr2") || "{}"));
 let openId = null;
 let collapsed = new Set(); // collapsed video groups; per page-load, like openId
 // Cards mutated while on screen keep their spot (dimmed) even once they stop
@@ -154,7 +172,7 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g,
     (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
-function save() { localStorage.setItem("ytr", JSON.stringify(state)); }
+function save() { localStorage.setItem("ytr2", JSON.stringify(state)); }
 function fmtT(s) { return Math.floor(s/60) + ":" + String(s%60).padStart(2,"0"); }
 function fmtD(iso) {
   if (!iso) return "";
@@ -175,56 +193,113 @@ function regress() {
   intercept = (sy - slope*sx) / N;
 }
 
-function visible() {
-  // "open" = still actionable: not yet both rated and watched, and not
-  // dismissed with a low rating (1-2 hides it, watched or not).
-  // Prospect quarantine: campaign nuggets appear ONLY in Prospect mode —
-  // separated by provenance (keyword-mined vs subscribed/manual), never by
-  // any quality judgment; nuggets are rated on merit.
-  const pass = (n) =>
-    (state.mode === "prospect" ? n.campaignId != null : n.campaignId == null) &&
-    (!state.manual || (n.sourceKey && n.sourceKey.endsWith("_manual"))) &&
-    (!state.channel || n.channelLabel === state.channel) &&
-    (!state.domain || n.domain === state.domain) &&
-    (!state.type || n.nugget_type === state.type) &&
-    (!state.age || Date.now() - new Date(n.publishedAt || n.created_at) <= state.age * 86400000) &&
-    (state.vstate !== "open" ||
-      ((n.rating == null || !n.watched_at) && !(n.rating != null && n.rating <= 2))) &&
-    (state.vstate !== "unrated" || n.rating == null) &&
-    (state.vstate !== "unwatched" || !n.watched_at) &&
-    (state.vstate !== "watched" || n.watched_at) &&
-    (state.mode !== "queue" || (n.rating >= 4 && !n.watched_at));
-  const v = all.filter(n => pass(n) || pinned.has(n.id));
-  // "my adds" overrides the mode sort: newest ADDED first (discovered_at) —
-  // the one view where "when did I send this" outranks publish date.
-  if (state.manual) {
-    v.sort((a, b) => new Date(b.discoveredAt || b.created_at) - new Date(a.discoveredAt || a.created_at));
-    return v;
+// Effective categories: real tags when present (primary first), else the
+// legacy nugget_type as a one-element pseudo-category — the pre-2026-08-06
+// pile ages under the same expiry clock without any backfill.
+function categoriesOf(n) {
+  return (n.categories && n.categories.length) ? n.categories
+    : (n.nugget_type ? [n.nugget_type] : []);
+}
+
+// Soft expiry: UNRATED and older (by created_at — when it entered the review
+// pile, not publish date) than the max TTL over its tags. Expired rows are
+// hidden from "open" but kept — the Expired chip lists them; any rating,
+// past or future, exempts a nugget for good.
+function isExpired(n) {
+  if (n.rating != null) return false;
+  const cats = categoriesOf(n);
+  if (!cats.length) return false;
+  let ttl = 0;
+  for (const c of cats) ttl = Math.max(ttl, catTtls[c] ?? defaultTtl);
+  return Date.now() - new Date(n.created_at) > ttl * 86400000;
+}
+
+// Scope = provenance only, no quality judgment anywhere: subs is youtube
+// that is neither campaign-discovered nor manually added.
+function scopePass(n) {
+  const manual = !!(n.sourceKey && n.sourceKey.endsWith("_manual"));
+  switch (state.scope) {
+    case "subs":     return n.source === "youtube" && n.campaignId == null && !manual;
+    case "substack": return n.source === "substack";
+    case "manual":   return manual;
+    case "campaign": return n.campaignId != null;
+    default:         return true;
   }
-  if (state.mode === "queue") {
-    v.sort((a,b) => (b.rating - a.rating) || (b.personal_score - a.personal_score));
-  } else if (state.mode === "comfort" || state.mode === "prospect") {
-    v.sort((a,b) => b.personal_score - a.personal_score);
-  } else if (state.mode === "stretch") {
-    v.sort((a,b) => residual(b) - residual(a));
-  } else {
-    v.sort((a,b) => new Date(b.publishedAt || b.created_at) - new Date(a.publishedAt || a.created_at));
+}
+
+// Judgment-state filters (state chip + rating chip). These alone define
+// "available" in the header: available = judgment filters applied, every
+// content filter (scope/source/category/domain/age) ignored.
+function judgmentPass(n) {
+  const exp = isExpired(n);
+  // "open" = still actionable: not yet both rated and watched, not dismissed
+  // with a low rating (1-2 hides it, watched or not), and not expired.
+  if (state.vstate === "open" && !((n.rating == null || !n.watched_at)
+    && !(n.rating != null && n.rating <= 2) && !exp)) return false;
+  if (state.vstate === "unrated" && n.rating != null) return false;
+  if (state.vstate === "unwatched" && n.watched_at) return false;
+  if (state.vstate === "watched" && !n.watched_at) return false;
+  if (state.vstate === "expired" && !exp) return false;
+  if (state.ratef === "4" && !(n.rating >= 4)) return false;
+  if (state.ratef === "5" && n.rating !== 5) return false;
+  return true;
+}
+
+function visible() {
+  const pass = (n) =>
+    scopePass(n) && judgmentPass(n) &&
+    (!state.src || n.channelLabel === state.src) &&
+    (!state.cat || categoriesOf(n).includes(state.cat)) &&
+    (!state.domain || n.domain === state.domain) &&
+    (!state.age || Date.now() - new Date(n.publishedAt || n.created_at) <= state.age * 86400000);
+  const v = all.filter(n => pass(n) || pinned.has(n.id));
+  if (state.sort === "added") {
+    // Newest ADDED first — the one sort where "when did I send this"
+    // outranks publish date (the old "my adds" ordering).
+    v.sort((a, b) => new Date(b.discoveredAt || b.created_at) - new Date(a.discoveredAt || a.created_at));
+  } else if (state.sort === "rating") {
+    v.sort((a, b) => ((b.rating || 0) - (a.rating || 0)) || (b.personal_score - a.personal_score));
+  } else if (state.sort === "stretch") {
+    v.sort((a, b) => residual(b) - residual(a));
+  } else if (state.sort === "newest") {
+    v.sort((a, b) => new Date(b.publishedAt || b.created_at) - new Date(a.publishedAt || a.created_at));
+  } else { // taste
+    v.sort((a, b) => b.personal_score - a.personal_score);
   }
   return v;
 }
 
-function render() {
-  document.getElementById("modes").innerHTML = MODES.map(([id, label]) =>
-    '<button class="' + (state.mode === id ? "on" : "") + '" onclick="setMode(\'' + id + '\')">' + label + "</button>"
+// One chip group: single-select buttons bound to a state property.
+function chipRow(elId, defs, prop) {
+  document.getElementById(elId).innerHTML = defs.map(([val, label]) =>
+    '<button class="' + (state[prop] === val ? "on" : "") +
+    '" onclick="setF(\'' + prop + '\',\'' + val + '\')">' + label + "</button>"
   ).join("");
+}
+
+// Chip tap: scope and judgment changes also re-narrow the source dropdown
+// (it only ever lists sources present in available ∩ selected scope type).
+function setF(prop, val) {
+  pinned.clear();
+  state[prop] = val;
+  save();
+  if (prop === "scope" || prop === "vstate" || prop === "ratef") fillSource();
+  render();
+}
+
+function render() {
+  chipRow("scopeChips", SCOPES, "scope");
+  chipRow("catRow", [["","All"]].concat(catList.map(c => [c, c])), "cat");
+  chipRow("sortChips", SORTS, "sort");
+  chipRow("stateChips", STATES, "vstate");
+  chipRow("rateChips", RATEFS, "ratef");
   const v = visible();
+  const avail = all.filter(judgmentPass).length;
   document.getElementById("count").textContent =
-    v.length + " nuggets" + (state.manual ? " — your manual adds, newest added first"
-      : state.mode === "stretch" ? " — sorted by how much the mentor disagrees with your taste"
-      : state.mode === "prospect" ? " — keyword prospects: rate what you'd actually watch" : "") +
+    v.length + " listed / " + avail + " available" +
+    (state.sort === "stretch" ? " — sorted by how much the mentor disagrees with your taste" : "") +
     " · edge stripe = " + (stripeDim() === "personal" ? "your taste" : "mentor") + " score (green 75+, gold 85+)";
-  document.getElementById("gToggle").className = state.group ? "on" : "";
-  document.getElementById("fManual").className = state.manual ? "on" : "";
+  document.getElementById("gToggle").className = "util" + (state.group ? " on" : "");
   const list = document.getElementById("list");
   const me = manualEmptyHtml();
   if (!v.length) { list.innerHTML = me + '<div class="empty">Nothing here.</div>'; return; }
@@ -236,7 +311,7 @@ function render() {
 // worth keeping" — the only honest feedback signal on the extractor.
 // Manual sources only; the archive's misses would drown the view.
 function manualEmptyHtml() {
-  if (!manualEmpty.length || state.mode === "prospect") return "";
+  if (!manualEmpty.length || state.scope === "campaign") return "";
   const rows = manualEmpty.map(v => {
     const label = v.yt_channels?.label || "?";
     const link = v.url || "https://www.youtube.com/watch?v=" + v.video_id;
@@ -373,7 +448,7 @@ async function rateAll(vid, k) {
 // still catches standouts on the other axis (green >=75, gold >=85; no
 // stripe for the ordinary, which is what makes the rare ones pop).
 function stripeDim() {
-  return (state.mode === "stretch") ? "personal" : "expert";
+  return (state.sort === "stretch") ? "personal" : "expert";
 }
 function stripeClass(n) {
   const s = stripeDim() === "personal" ? n.personal_score : n.expert_score;
@@ -390,7 +465,7 @@ function card(n) {
       (n.start_seconds != null ? "&t=" + n.start_seconds + "s" : "");
   const watchLabel = isPost ? "&#128214; Read now"
     : n.start_seconds != null ? "&#9654; Watch at " + fmtT(n.start_seconds) : "&#9654; Watch now";
-  const res = state.mode === "stretch"
+  const res = state.sort === "stretch"
     ? ' <span class="chip res">mentor +' + residual(n).toFixed(0) + "</span>" : "";
   return '<div class="card' + (open ? " open" : "") + (n.watched_at ? " watched" : "") + stripeClass(n) + '">' +
     '<div class="hl" onclick="toggle(\'' + n.id + '\')">' + esc(n.headline || n.content.slice(0, 110)) + "</div>" +
@@ -398,7 +473,10 @@ function card(n) {
       "<b>" + esc(n.channelLabel) + "</b>" +
       "<span>" + fmtD(n.publishedAt || n.created_at) + "</span>" +
       (n.domain ? '<span class="chip">' + esc(n.domain) + "</span>" : "") +
-      (n.nugget_type ? '<span class="chip">' + esc(n.nugget_type) + "</span>" : "") +
+      // Category chips, primary first (order IS the signal — position 0
+      // drives partition stats server-side).
+      categoriesOf(n).map(c => '<span class="chip">' + esc(c) + "</span>").join("") +
+      (isExpired(n) ? '<span class="chip" style="color:var(--faint)">expired</span>' : "") +
       (isPost ? '<span class="chip">substack</span>' : "") +
       (n.sourceKey && n.sourceKey.endsWith("_manual")
         ? '<span class="chip" style="color:var(--accent)">manual add</span>' : "") +
@@ -437,7 +515,6 @@ function rnote(n) {
     (n.rating >= 4 && !n.watched_at ? " &middot; in queue" : "");
 }
 
-function setMode(m) { pinned.clear(); state.mode = m; save(); render(); }
 function toggle(id) { openId = openId === id ? null : id; render(); }
 
 // A failed save must never look like a successful one: any non-OK response
@@ -549,6 +626,8 @@ async function load() {
   const data = await res.json();
   renderStatus(data.status);
   manualEmpty = data.manual_empty || [];
+  catTtls = data.category_ttls || {};
+  defaultTtl = data.default_ttl_days || 180;
   all = (data.nuggets || []).map(n => ({
     ...n,
     channelLabel: n.yt_videos?.yt_channels?.label || n.yt_videos?.channel_id || "?",
@@ -565,35 +644,47 @@ async function load() {
   }));
   channelHype = new Map((data.channel_hype || []).map(c => [c.label, c.avg_hype]));
   regress();
-  const fill = (sel, values, label) => {
+  // Category chip vocabulary: server-known tags first (TTL order is seed
+  // order), then anything present only in the data (legacy pseudo-tags).
+  const seen = new Set(all.flatMap(n => categoriesOf(n)));
+  catList = Object.keys(catTtls).filter(c => seen.has(c))
+    .concat([...seen].filter(c => !(c in catTtls)).sort());
+  const fill = (sel, values) => {
     const el = document.getElementById(sel);
     [...new Set(values.filter(Boolean))].sort().forEach(vv => {
       const o = document.createElement("option"); o.value = vv;
-      o.textContent = label ? label(vv) : vv; el.appendChild(o);
+      o.textContent = vv; el.appendChild(o);
     });
   };
-  // Channel options carry the running hype average — the weeding signal.
-  fill("fChannel", all.map(n => n.channelLabel), (vv) => {
-    const h = channelHype.get(vv);
-    return h == null ? vv : vv + " (" + (h > 0 ? "+" : "") + Number(h).toFixed(1) + ")";
-  });
   fill("fDomain", all.map(n => n.domain));
-  fill("fType", all.map(n => n.nugget_type));
-  bindFilter("fChannel", "channel");
+  fillSource();
+  bindFilter("fSource", "src");
   bindFilter("fDomain", "domain");
-  bindFilter("fType", "type");
-  bindFilter("fState", "vstate");
   bindFilter("fAge", "age");
   document.getElementById("gToggle").onclick = () => {
     state.group = !state.group; save(); render();
-  };
-  document.getElementById("fManual").onclick = () => {
-    pinned.clear(); state.manual = !state.manual; save(); render();
   };
   document.getElementById("zoomIn").onclick = () => zoomStep(1);
   document.getElementById("zoomOut").onclick = () => zoomStep(-1);
   applyZoom();
   render();
+}
+
+// Source dropdown = particular sources present in available ∩ selected scope
+// type (Mike, 2026-08-06), each carrying the channel's running hype average —
+// the weeding signal. Rebuilt on any scope/state/rating chip change; a
+// selection that narrows away resets to "all sources".
+function fillSource() {
+  const el = document.getElementById("fSource");
+  const opts = [...new Set(all.filter(n => judgmentPass(n) && scopePass(n))
+    .map(n => n.channelLabel).filter(Boolean))].sort();
+  if (state.src && !opts.includes(state.src)) state.src = "";
+  el.innerHTML = '<option value="">all sources</option>' + opts.map(vv => {
+    const h = channelHype.get(vv);
+    const label = h == null ? vv : vv + " (" + (h > 0 ? "+" : "") + Number(h).toFixed(1) + ")";
+    return '<option value="' + esc(vv) + '">' + esc(label) + "</option>";
+  }).join("");
+  el.value = state.src || "";
 }
 load();
 </script>

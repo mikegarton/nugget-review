@@ -43,8 +43,10 @@ Bookmark: `https://mikegarton.github.io/nugget-review/?key=<YT_REVIEW_KEY>`
 1. Skim cards and rate the **nugget** from its abstract (star tooltips carry
    the scale: 1 never gonna look · 2 unlikely to use · 3 didn't regret ·
    4 good · 5 outstanding). Tap the same star again to clear.
-2. Rating **4–5 queues it** — the Queue mode is the after-work watch list
-   (rated ≥ 4 and unwatched), with links that start just before the nugget.
+2. Rating **4–5 queues it** — the watch list is the chip combo
+   **Unwatched + ≥4★ + Rating sort**, with links that start just before
+   the nugget (the old one-tap Queue mode was retired 2026-08-06 with the
+   filter redesign; the queue→playlist sync is server-side and unchanged).
 3. The **Watch link marks the card watched** on click (the toggle undoes a
    mis-click). After watching, the same stars become the **video rating** —
    revise or confirm.
@@ -55,18 +57,40 @@ Bookmark: `https://mikegarton.github.io/nugget-review/?key=<YT_REVIEW_KEY>`
    database as facts, 1★ rows are deleted outright by the processor after
    a 24 h grace window (un-rate within a day to save a mis-tap).
 
-## Modes and filters
+## Filters (2026-08-06 redesign: three orthogonal chip groups)
 
-- **Comfort** — sorted by personal_score (tired-day mode).
-- **Stretch** — sorted by mentor residual, the part of expert_score your
-  taste doesn't explain (good-day mode).
-- **Newest** — by publish date.
-- **Queue** — the watch list (see above).
-- State filter: **open** (default — everything not yet both rated and
-  watched, minus anything rated 1–2) · any state · unrated · unwatched ·
-  watched. Plus channel / domain / type filters and a max-age filter
-  (≤ 2 days … ≤ 1 year, by publish date). Choices persist in
-  `localStorage`.
+The old Comfort/Stretch/Newest/Queue/Prospect modes conflated scope, sort,
+and judgment state; they are now three independent, horizontally scrollable
+chip rows (frequency-ordered from the left, every group leads with **All**;
+Android-with-large-fonts is the layout acceptance test). Choices persist in
+`localStorage` (`ytr2`).
+
+- **Row 1 — where from**: leads with the domain dropdown, then the
+  **particular-source dropdown** — which only ever lists sources present
+  in *available ∩ selected scope type* (a selection that narrows away
+  resets to "all sources") — then the scope chips (provenance only, no
+  group is privileged): All · Subs (youtube, neither campaign nor manual)
+  · Substack · My adds · Campaign; max-age dropdown last (≤ 2 days …
+  ≤ 1 year, by publish date).
+- **Row 2 — categories**: All · one chip per category tag present in the
+  data (has-tag semantics; nuggets carry ordered tags, primary first —
+  pre-2026-08-06 nuggets show their legacy single type as a
+  pseudo-category).
+- **Row 3 — sort ‖ state ‖ rating**: sort Taste (personal_score) ·
+  Stretch (mentor residual — the part of expert_score your taste doesn't
+  explain) · Newest (publish date) · Rating · Added (when you sent it —
+  the old "my adds" ordering); state **Open** (default — not yet both
+  rated and watched, minus anything rated 1–2, minus expired) · Unrated ·
+  Unwatched · Watched · **Expired** · Any; rating Any★ · ≥4★ · 5★.
+- **Soft expiry**: an UNRATED nugget older (by `created_at` — when it
+  entered the pile) than the longest TTL among its category tags drops out
+  of Open into the Expired chip. Rows are never deleted by expiry; any
+  rating exempts a nugget for good. TTLs live in `yt_categories`
+  (SQL-editor edits apply on next load).
+- **Header count** reads `N listed / M available`: listed = after all
+  filters; available = judgment filters only (state + rating chips),
+  scope/source/category/domain/age ignored — the ratio shows how much
+  your scope choice is hiding.
 - **By video** toggle (default on): multi-nugget videos group under a
   collapsible header — "X nuggets in Y" with channel, date, a Watch
   button for the whole video (marks every nugget in the group watched),
@@ -81,23 +105,23 @@ Bookmark: `https://mikegarton.github.io/nugget-review/?key=<YT_REVIEW_KEY>`
   with the channel's verbatim YouTube title below it and a signed
   **hype ±N** chip (−5 underselling … +5 clickbait, scored
   title-vs-transcript at processing time). Groups sort by their best
-  nugget in the current mode; nuggets within a group run in timestamp
+  nugget in the current sort; nuggets within a group run in timestamp
   order. Singletons stay plain cards. Duration shows once the video's
   `duration_seconds` is enriched.
-- Channel dropdown entries carry the channel's running average hype
+- Source dropdown entries carry the channel's running average hype
   level to one decimal — the channel-weeding signal (server-side
   `yt_channel_hype` view, so it includes videos that yielded zero
   nuggets).
-- **Prospect** mode: nuggets from keyword campaigns (`yt-prospector`)
-  appear here and ONLY here — the subscribed-channel views never see
-  them. Stars keep one meaning everywhere ("I intend to watch this");
-  the legend under the stars carries the standing reminder, and
-  ratings feed the campaign's per-query yield stats.
+- Campaign nuggets get **no special treatment** (the old Prospect
+  quarantine was retired 2026-08-06 — Campaign is just a scope chip).
+  Stars keep one meaning everywhere ("I intend to watch this"); the
+  legend under a campaign nugget's stars carries the standing reminder,
+  and ratings feed the campaign's per-query yield stats.
 - **Second-dimension stripe**: each card's left edge is colored by the
   score the current sort ISN'T showing (mentor score everywhere; your
-  taste score in Stretch) — green ≥75, gold ≥85, nothing otherwise —
+  taste score in Stretch sort) — green ≥75, gold ≥85, nothing otherwise —
   so skimming any sorted list still catches standouts on the other
-  axis. The legend line names the stripe's dimension per mode.
+  axis. The legend line names the stripe's dimension.
 - Substack nuggets wear a `substack` chip and source-appropriate verbs —
   **📖 Read now / mark seen** — linking to the post itself; header
   actions follow suit. Same stars, same meaning.
@@ -119,7 +143,7 @@ Bookmark: `https://mikegarton.github.io/nugget-review/?key=<YT_REVIEW_KEY>`
   later).
 
 Cards you rate or watch stay **pinned in place** (dimmed) until the next
-mode/filter change or reload, so acting on a card never yanks it out of the
+filter change or reload, so acting on a card never yanks it out of the
 list mid-interaction. Watched-but-unrated cards show a "rate the video to
 close it out" nudge.
 
