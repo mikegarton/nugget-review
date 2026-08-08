@@ -74,7 +74,9 @@ file:// links work on the dev PC only.</p>
   from the Shield or any phone: <a href="capture.html">how to send videos</a>.</div>
 </div>
 
-<h2>Instruments — live dashboards</h2>
+<h2>Instruments — live dashboards (sorted A→Z)</h2>
+<a class="row" href="https://claude.ai/code/routines" target="_blank" rel="noopener">
+  <b>Cloud routines</b><span>the monthly limits auditor reports here (Claude login)</span></a>
 <div id="dash"></div>
 <div class="setup" id="setup" style="display:none">
   <b>One-time setup on this device</b>
@@ -87,17 +89,15 @@ file:// links work on the dev PC only.</p>
 </div>
 <a class="row" href="https://supabase.com/dashboard/project/zowilxlpldqxtotrvekd" target="_blank" rel="noopener">
   <b>Supabase project</b><span>SQL editor, functions, advisor (login)</span></a>
-<a class="row" href="https://claude.ai/code/routines" target="_blank" rel="noopener">
-  <b>Cloud routines</b><span>the monthly limits auditor reports here (Claude login)</span></a>
 
-<h2>Docs — one tree, sorted, badges show where each lives</h2>
+<h2>Docs — one tree; siblings sorted A&#8594;Z; badges show where each lives</h2>
 
 <details class="tree">
   <summary>registries<small>living lists &amp; reference charts, updated in place</small></summary>
   <div class="kids">
-    <a class="doc" href="https://claude.ai/code/artifact/928a7573-29bb-4857-99c4-5c34f2d6ed79" target="_blank" rel="noopener">Which AI surface for this? <span class="badge">artifact</span></a>
     <a class="doc" href="file:///C:/dev/working_docs/revisit-list.md">revisit list <span class="badge">local</span></a>
     <a class="doc" href="file:///C:/dev/working_docs/thread-index.md">thread index <span class="badge">local</span></a>
+    <a class="doc" href="https://claude.ai/code/artifact/928a7573-29bb-4857-99c4-5c34f2d6ed79" target="_blank" rel="noopener">Which AI surface for this? <span class="badge">artifact</span></a>
   </div>
 </details>
 
@@ -120,8 +120,8 @@ file:// links work on the dev PC only.</p>
       <a class="doc" href="file:///C:/dev/nugget-review/README.md">README (this site's repo) <span class="badge">local</span></a>
     </div></details>
     <details class="tree"><summary>ob-adoption</summary><div class="kids">
-      <a class="doc" href="file:///C:/dev/working_docs/projects/ob-adoption/00-quest.md">quest charter <span class="badge">local</span></a>
       <a class="doc" href="file:///C:/dev/working_docs/projects/ob-adoption/04-adoption-options.md">adoption options + dossier entry point <span class="badge">local</span></a>
+      <a class="doc" href="file:///C:/dev/working_docs/projects/ob-adoption/00-quest.md">quest charter <span class="badge">local</span></a>
     </div></details>
     <details class="tree"><summary>open-brain</summary><div class="kids">
       <a class="doc" href="file:///C:/dev/open-brain-capture-policy.md">capture policy (master — edit here first) <span class="badge">local</span></a>
@@ -153,8 +153,8 @@ file:// links work on the dev PC only.</p>
   <summary>studies<small>standalone investigations — cite/append, no open decisions</small></summary>
   <div class="kids">
     <details class="tree"><summary>goodness-tests genealogy</summary><div class="kids">
-      <a class="doc" href="file:///C:/dev/working_docs/studies/goodness-tests-genealogy/goodness-tests-genealogy.md">genealogy (main doc) <span class="badge">local</span></a>
       <a class="doc" href="file:///C:/dev/working_docs/studies/goodness-tests-genealogy/workings/era-reports/">era reports (workings) <span class="badge">folder</span></a>
+      <a class="doc" href="file:///C:/dev/working_docs/studies/goodness-tests-genealogy/goodness-tests-genealogy.md">genealogy (main doc) <span class="badge">local</span></a>
     </div></details>
     <details class="tree"><summary>session archaeology</summary><div class="kids">
       <a class="doc" href="file:///C:/dev/working_docs/studies/session-archaeology/needs-to-tools-outline.md">needs-to-tools outline <span class="badge">local</span></a>
@@ -176,19 +176,19 @@ function render() {
   try { key = localStorage.getItem("cr_review_key") || "";
         vault = localStorage.getItem("cr_vault_url") || ""; } catch (e) {}
   const rows = [];
-  if (key) {
-    rows.push('<a class="row" href="index.html?key=' + encodeURIComponent(key) +
-      '"><b>Nugget viewer</b><span>skim, rate, queue — Comfort / Stretch / Queue / Prospect</span></a>');
-    rows.push('<a class="row" href="ops.html?key=' + encodeURIComponent(key) +
-      '"><b>Nugget ops</b><span>burn rate, campaign yields, channel economics, knobs</span></a>');
-  } else {
-    rows.push('<div class="row off"><b>Nugget viewer + ops</b><span>enter the review key below to activate on this device</span></div>');
-  }
   if (vault) {
     rows.push('<a class="row" href="' + esc(vault) +
       '" target="_blank" rel="noopener"><b>Item Vault — the app</b><span>add, review, file, find (household PIN)</span></a>');
   } else {
     rows.push('<div class="row off"><b>Item Vault — the app</b><span>paste the web-app URL below to activate</span></div>');
+  }
+  if (key) {
+    rows.push('<a class="row" href="ops.html?key=' + encodeURIComponent(key) +
+      '"><b>Nugget ops</b><span>burn rate, campaign yields, channel economics, knobs</span></a>');
+    rows.push('<a class="row" href="index.html?key=' + encodeURIComponent(key) +
+      '"><b>Nugget viewer</b><span>skim, rate, queue — Comfort / Stretch / Queue / Prospect</span></a>');
+  } else {
+    rows.push('<div class="row off"><b>Nugget ops + viewer</b><span>enter the review key below to activate on this device</span></div>');
   }
   document.getElementById("dash").innerHTML = rows.join("");
   document.getElementById("setup").style.display = (key && vault) ? "none" : "block";
