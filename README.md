@@ -10,9 +10,9 @@ shell only**, served by GitHub Pages (public + Pages enabled 2026-07-29):
 - `ops.html` — burn rates, campaign yields, channel + per-source economics,
   live knobs (marked knobs and per-source priority editable with the ops
   write key; bounds enforced server-side, changes audited)
-- `home.html` — the public control room: links to every dashboard and
-  reference doc, plus the paste box for sending YouTube links to the
-  pipeline (`yt-add`)
+- The control room (`home.html`) moved to `C:\dev\control-room\` on
+  2026-08-08 — it is a cross-project personal hub, not part of this app's
+  shell. The paste box for sending YouTube links (`yt-add`) lives there.
 - `extension/` — Chrome extension (MV3, load unpacked): Alt+Q sends the
   current tab's video to the pipeline; right-click any YouTube link for the
   context menu; badge counts today's adds. Endpoint + review key live in
@@ -20,17 +20,18 @@ shell only**, served by GitHub Pages (public + Pages enabled 2026-07-29):
 - `capture.html` — user instructions for all four capture surfaces
   (extension install/use, the Android share sheet, the unlisted-playlist
   inbox that covers the NVIDIA Shield and phone/tablet YouTube apps, and
-  the paste box)
+  the paste box), plus the on-site review-key save box (`#setup`) that the
+  share handler depends on; it is also the PWA `start_url`
 - `manifest.webmanifest` + `sw.js` + `share.html` — the site is an
   installable PWA whose `share_target` puts "Nuggets" in Android's share
   sheet; YouTube app → Share → Nuggets posts the video to `yt-add`
-  (share.html reads the review key from the same localStorage the control
-  room uses). The service worker caches nothing — install-eligibility only.
+  (share.html reads the review key saved by capture.html's setup box).
+  The service worker caches nothing — install-eligibility only.
 
 It contains no data and no secrets: all data comes from the pipeline's
 key-gated `yt-review` Supabase function (JSON, CORS-enabled), and the key
-lives only in the bookmark's `?key=` parameter (the control room keeps it
-in each device's browser localStorage).
+lives only in the bookmark's `?key=` parameter (capture.html's setup box
+keeps it in each device's browser localStorage for the share handler).
 
 Why Pages: Supabase's gateway rewrites any `text/html` response from
 `*.supabase.co` to `text/plain` with a sandbox CSP, so the shell cannot be

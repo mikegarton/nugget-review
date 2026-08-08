@@ -38,7 +38,7 @@
 <div id="icon">⏳</div>
 <div id="msg">Sending to the pipeline…</div>
 <div id="detail"></div>
-<a class="btn" href="home.html">Control room</a>
+<a class="btn" href="file:///C:/dev/control-room/home.html">Control room</a>
 <script>
 const ADD_URL = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-add";
 function esc(s) {
@@ -67,7 +67,7 @@ async function run() {
   try { key = localStorage.getItem("cr_review_key") || ""; } catch (e) {}
   if (!key) {
     show("✗", "err", "No review key on this device",
-      'Open the <a href="home.html">control room</a> once and save the review key, then share again.');
+      'Save the review key once in the <a href="capture.html#setup">setup box</a>, then share again.');
     return;
   }
   try {

@@ -50,7 +50,7 @@ All three feed the same intake; pick whichever is nearest to hand.</p>
 <tr><th>Surface</th><th>Effort</th><th>Works from</th><th>Latency</th></tr>
 <tr><td>Chrome extension</td><td>1 keystroke</td><td>desktop Chrome</td><td>~5 min</td></tr>
 <tr><td>Share sheet</td><td>2 taps</td><td>Android phone/tablet (YouTube app)</td><td>~5 min</td></tr>
-<tr><td>Paste box (<a href="home.html">control room</a>)</td><td>paste many</td><td>any browser</td><td>~5 min</td></tr>
+<tr><td>Paste box (<a href="file:///C:/dev/control-room/home.html">control room</a>)</td><td>paste many</td><td>dev PC</td><td>~5 min</td></tr>
 <tr><td>Playlist inbox</td><td>2–3 taps</td><td>any YouTube app — Shield, phone, tablet, TV</td><td>up to ~1 h</td></tr>
 </table>
 <p class="note"><b>Priority:</b> the first 3 manual adds per hour (counted across
@@ -103,12 +103,25 @@ surface.</p>
 
 <h3>Set up (once per Android device)</h3>
 <ol>
-  <li>In Chrome on the phone, open the <a href="home.html">control room</a> and
-    make sure the review key is saved there (the viewer/ops links show when it
-    is — the share handler uses the same saved key).</li>
+  <li>In Chrome on the phone, open this page and save the review key in the
+    box just below (the share handler uses the same saved key).</li>
   <li>Chrome menu (&#8942;) &rarr; <b>Add to Home screen</b> &rarr; <b>Install</b>.
     (If Chrome offers an "Install app" banner, that's the same thing.)</li>
 </ol>
+
+<div class="box" id="setup">
+  <b>Review key — save once per device</b>
+  <p class="note">The key from your nugget viewer bookmark (not the ops write
+  key). Stored in this browser's local storage only — read by the share
+  handler when you send a video.</p>
+  <input type="password" id="in-key" placeholder="review key"
+    style="width:100%;padding:9px 10px;font:inherit;margin:6px 0;
+    border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)">
+  <button onclick="saveKey()"
+    style="font:inherit;border:none;border-radius:8px;padding:9px 14px;
+    background:var(--blue);color:var(--bg);cursor:pointer">Save key on this device</button>
+  <div class="note" id="key-status"></div>
+</div>
 
 <h3>Use</h3>
 <ul>
@@ -164,8 +177,9 @@ app sends it to the pipeline on the next hourly sweep.</p>
 </ul>
 
 <h2>Paste box <span class="tag">any browser</span></h2>
-<p>On the <a href="home.html">control room</a>, once the review key is saved on
-that device: paste one or many YouTube links (one per line or comma-separated)
+<p>On the <a href="file:///C:/dev/control-room/home.html">control room</a>
+(dev PC), once the review key is saved on that device: paste one or many
+YouTube links (one per line or comma-separated)
 and hit <b>Send to pipeline</b>. The reply lists each video —
 &#9889; jumped the queue, &#10003; added, &mdash; already known.</p>
 <p class="note">This is the batch surface: up to 50 links at once. It works on a
@@ -186,5 +200,19 @@ phone too — from the YouTube app: Share &rarr; Copy link &rarr; paste here.</p
     watched in the <a href="index.html">viewer</a> removes it on the next
     sync; the playlist itself is play-only.</li>
 </ul>
+<script>
+function saveKey() {
+  const k = document.getElementById("in-key").value.trim();
+  if (!k) { document.getElementById("key-status").textContent = "Nothing to save."; return; }
+  try { localStorage.setItem("cr_review_key", k); } catch (e) {}
+  document.getElementById("in-key").value = "";
+  document.getElementById("key-status").textContent = "Saved on this device.";
+}
+try {
+  if (localStorage.getItem("cr_review_key"))
+    document.getElementById("key-status").textContent =
+      "A review key is already saved on this device.";
+} catch (e) {}
+</script>
 </body>
 </html>
