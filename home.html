@@ -36,14 +36,32 @@
   .setup button { font: inherit; border: none; border-radius: 8px; padding: 9px 14px;
     background: var(--blue); color: var(--bg); cursor: pointer; }
   .note { color: var(--dim); font-size: 12.5px; margin-top: 6px; }
+  /* Docs tree: two-level default via native details/summary (principle P1) */
+  details.tree { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; margin-bottom: 8px; padding: 0; }
+  details.tree > summary { cursor: pointer; padding: 12px 15px; font-weight: 600;
+    color: var(--blue); list-style: none; }
+  details.tree > summary::before { content: "\25B8\00A0"; color: var(--dim); }
+  details.tree[open] > summary::before { content: "\25BE\00A0"; }
+  details.tree > summary small { display: block; font-weight: 400;
+    color: var(--dim); font-size: 13px; }
+  details.tree > .kids { padding: 0 10px 10px 22px; }
+  details.tree details.tree { border: none; border-left: 1px solid var(--line);
+    border-radius: 0; margin: 0; }
+  a.doc { display: block; padding: 7px 10px; margin: 2px 0; border-radius: 8px;
+    text-decoration: none; color: var(--ink); font-size: 14.5px; }
+  a.doc:hover { background: var(--bg); }
+  a.doc .badge { float: right; font-size: 11px; color: var(--dim);
+    border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; }
 </style>
 </head>
 <body>
 <h1>Mike's control room</h1>
-<p class="lede">Dashboards and reference docs, reachable from any device.
-This page holds no secrets: keys live only in each device's browser.</p>
+<p class="lede">Act, instruments, docs — reachable from any device.
+This page holds no secrets: keys live only in each device's browser.
+file:// links work on the dev PC only.</p>
 
-<h2>Add to the nugget pipeline</h2>
+<h2>Act — add to the nugget pipeline</h2>
 <div class="setup" id="addbox" style="display:none">
   <b>Paste YouTube links — one per line (or comma-separated)</b>
   <textarea id="add-urls" rows="3" placeholder="https://www.youtube.com/watch?v=..."
@@ -56,7 +74,7 @@ This page holds no secrets: keys live only in each device's browser.</p>
   from the Shield or any phone: <a href="capture.html">how to send videos</a>.</div>
 </div>
 
-<h2>Dashboards — live instruments</h2>
+<h2>Instruments — live dashboards</h2>
 <div id="dash"></div>
 <div class="setup" id="setup" style="display:none">
   <b>One-time setup on this device</b>
@@ -69,62 +87,84 @@ This page holds no secrets: keys live only in each device's browser.</p>
 </div>
 <a class="row" href="https://supabase.com/dashboard/project/zowilxlpldqxtotrvekd" target="_blank" rel="noopener">
   <b>Supabase project</b><span>SQL editor, functions, advisor (login)</span></a>
-
-<h2>Reference docs</h2>
-<a class="row" href="capture.html">
-  <b>Sending videos to the pipeline</b><span>extension install &amp; use, playlist inbox for the Shield/phone, paste box — no login needed</span></a>
-<a class="row" href="https://claude.ai/code/artifact/24bf2b13-67b5-464c-92ee-6151a5b57eaf" target="_blank" rel="noopener">
-  <b>Limits &amp; costs chart</b><span>every quota, wall, and knob (Claude login)</span></a>
-<a class="row" href="https://claude.ai/code/artifact/928a7573-29bb-4857-99c4-5c34f2d6ed79" target="_blank" rel="noopener">
-  <b>Which AI surface for this?</b><span>the decision tree (Claude login)</span></a>
-<a class="row" href="https://claude.ai/code/artifact/2aefa9d9-a834-4045-a5a7-7a713fce39e9" target="_blank" rel="noopener">
-  <b>Open Brain — key rotation runbook</b><span>when a key needs replacing (Claude login)</span></a>
-<a class="row" href="https://claude.ai/code/artifact/17f6f092-dccf-4a17-9576-fc2e33fea2b2" target="_blank" rel="noopener">
-  <b>Token-efficiency practices</b><span>evidence-backed rules for repos &amp; brain material (Claude login)</span></a>
-<a class="row" href="https://github.com/mikegarton/yt-nugget-pipeline/blob/main/docs/LIMITS.md" target="_blank" rel="noopener">
-  <b>LIMITS.md</b><span>versioned source of truth, auto-verified monthly (GitHub login)</span></a>
-<a class="row" href="file:///C:/dev/working_docs/projects/ob-adoption/04-adoption-options.md">
-  <b>OB adoption — options &amp; dossiers</b><span>ratings, conflict matrix, six adoption paths; entry point to the 48-dossier study (local file — works on this PC only)</span></a>
-
-<h2>Local dev — this PC only (file:// links)</h2>
-<a class="row" href="file:///C:/dev/working_docs/README.md">
-  <b>working_docs — home</b><span>the doc map: registries at root, projects/, studies/ (disk is master; this section mirrors it)</span></a>
-<a class="row" href="file:///C:/dev/working_docs/revisit-list.md">
-  <b>&#8227; registry — revisit list</b><span>deferred topics, push/pop rules</span></a>
-<a class="row" href="file:///C:/dev/working_docs/thread-index.md">
-  <b>&#8227; registry — thread index</b><span>all sessions: spans, compaction, topics, archive status</span></a>
-<a class="row" href="file:///C:/dev/working_docs/projects/ob-adoption/00-quest.md">
-  <b>&#8227; project — ob-adoption</b><span>quest charter; decision doc also under Reference docs above</span></a>
-<a class="row" href="file:///C:/dev/working_docs/projects/strategic-join/strategic-join-design.md">
-  <b>&#8227; project — strategic join</b><span>A&#215;B design, goodness tests, sample learnings</span></a>
-<a class="row" href="file:///C:/dev/working_docs/projects/word-tracker/word-tracker-concept.md">
-  <b>&#8227; project — word tracker</b><span>concept doc; interview open (revisit 14)</span></a>
-<a class="row" href="file:///C:/dev/working_docs/projects/yt-nugget/velocity-study-spec.md">
-  <b>&#8227; project — yt-nugget docs</b><span>velocity study spec, hybrid-search campaign phrases</span></a>
-<a class="row" href="file:///C:/dev/working_docs/studies/goodness-tests-genealogy/goodness-tests-genealogy.md">
-  <b>&#8227; study — goodness-tests genealogy</b><span>how the tests evolved, with transcript-pointer era reports</span></a>
-<a class="row" href="file:///C:/dev/working_docs/studies/session-archaeology/needs-to-tools-outline.md">
-  <b>&#8227; study — session archaeology</b><span>needs-to-tools outline + thread-topic reports</span></a>
-<a class="row" href="file:///C:/dev/open-brain-capture-policy.md">
-  <b>Open Brain capture policy</b><span>the master policy file — edit here first, then propagate</span></a>
-<a class="row" href="file:///C:/dev/explainers/home.html">
-  <b>Explainers hub</b><span>plain-language project pages (private, browsable site)</span></a>
-<a class="row" href="file:///C:/dev/yt-nugget-pipeline/README.md">
-  <b>yt-nugget-pipeline</b><span>pipeline repo — docs, LIMITS.md source</span></a>
-<a class="row" href="file:///C:/dev/schema_registry/README.md">
-  <b>schema_registry</b><span>cell validation + storage boundary; decisions live in this README</span></a>
-<a class="row" href="file:///C:/dev/OB1/README.md">
-  <b>OB1 fork</b><span>upstream Open Brain source — reference only, adoption decisions in working_docs</span></a>
-<a class="row" href="file:///C:/dev/item-vault/README.md">
-  <b>item-vault</b><span>household item app — source repo (live app link above)</span></a>
-<a class="row" href="file:///C:/dev/ad_hoc/">
-  <b>ad_hoc</b><span>one-shot tools (yt_backfill_enrich and friends) — folder listing</span></a>
-<a class="row" href="file:///C:/dev/chat-archive/README.md">
-  <b>chat-archive</b><span>conversation archive tooling</span></a>
-
-<h2>Automation</h2>
 <a class="row" href="https://claude.ai/code/routines" target="_blank" rel="noopener">
   <b>Cloud routines</b><span>the monthly limits auditor reports here (Claude login)</span></a>
+
+<h2>Docs — one tree, sorted, badges show where each lives</h2>
+
+<details class="tree">
+  <summary>registries<small>living lists &amp; reference charts, updated in place</small></summary>
+  <div class="kids">
+    <a class="doc" href="https://claude.ai/code/artifact/928a7573-29bb-4857-99c4-5c34f2d6ed79" target="_blank" rel="noopener">Which AI surface for this? <span class="badge">artifact</span></a>
+    <a class="doc" href="file:///C:/dev/working_docs/revisit-list.md">revisit list <span class="badge">local</span></a>
+    <a class="doc" href="file:///C:/dev/working_docs/thread-index.md">thread index <span class="badge">local</span></a>
+  </div>
+</details>
+
+<details class="tree">
+  <summary>projects<small>open decisions, lifecycle — expand a project for its docs</small></summary>
+  <div class="kids">
+    <details class="tree"><summary>ad_hoc</summary><div class="kids">
+      <a class="doc" href="file:///C:/dev/ad_hoc/">tool folder listing <span class="badge">folder</span></a>
+    </div></details>
+    <details class="tree"><summary>chat-archive</summary><div class="kids">
+      <a class="doc" href="file:///C:/dev/chat-archive/README.md">README <span class="badge">local</span></a>
+    </div></details>
+    <details class="tree"><summary>explainers</summary><div class="kids">
+      <a class="doc" href="file:///C:/dev/explainers/home.html">explainer hub (browsable) <span class="badge">site</span></a>
+    </div></details>
+    <details class="tree"><summary>item-vault</summary><div class="kids">
+      <a class="doc" href="file:///C:/dev/item-vault/README.md">README (live app under Instruments) <span class="badge">local</span></a>
+    </div></details>
+    <details class="tree"><summary>nugget-review</summary><div class="kids">
+      <a class="doc" href="file:///C:/dev/nugget-review/README.md">README (this site's repo) <span class="badge">local</span></a>
+    </div></details>
+    <details class="tree"><summary>ob-adoption</summary><div class="kids">
+      <a class="doc" href="file:///C:/dev/working_docs/projects/ob-adoption/00-quest.md">quest charter <span class="badge">local</span></a>
+      <a class="doc" href="file:///C:/dev/working_docs/projects/ob-adoption/04-adoption-options.md">adoption options + dossier entry point <span class="badge">local</span></a>
+    </div></details>
+    <details class="tree"><summary>open-brain</summary><div class="kids">
+      <a class="doc" href="file:///C:/dev/open-brain-capture-policy.md">capture policy (master — edit here first) <span class="badge">local</span></a>
+      <a class="doc" href="https://claude.ai/code/artifact/2aefa9d9-a834-4045-a5a7-7a713fce39e9" target="_blank" rel="noopener">key-rotation runbook <span class="badge">artifact</span></a>
+      <a class="doc" href="file:///C:/dev/OB1/README.md">OB1 fork README (reference only) <span class="badge">local</span></a>
+    </div></details>
+    <details class="tree"><summary>schema-registry</summary><div class="kids">
+      <a class="doc" href="file:///C:/dev/schema_registry/README.md">README (decisions live here) <span class="badge">local</span></a>
+    </div></details>
+    <details class="tree"><summary>strategic-join</summary><div class="kids">
+      <a class="doc" href="file:///C:/dev/working_docs/projects/strategic-join/strategic-join-design.md">design doc (goodness tests) <span class="badge">local</span></a>
+      <a class="doc" href="file:///C:/dev/working_docs/projects/strategic-join/strategic-join-sample-learnings.md">sample-test learnings <span class="badge">local</span></a>
+    </div></details>
+    <details class="tree"><summary>word-tracker</summary><div class="kids">
+      <a class="doc" href="file:///C:/dev/working_docs/projects/word-tracker/word-tracker-concept.md">concept doc (interview open) <span class="badge">local</span></a>
+    </div></details>
+    <details class="tree"><summary>yt-nugget</summary><div class="kids">
+      <a class="doc" href="file:///C:/dev/working_docs/projects/yt-nugget/campaign-phrases-hybrid-search.md">campaign phrases — hybrid search <span class="badge">local</span></a>
+      <a class="doc" href="https://claude.ai/code/artifact/24bf2b13-67b5-464c-92ee-6151a5b57eaf" target="_blank" rel="noopener">limits &amp; costs chart <span class="badge">artifact</span></a>
+      <a class="doc" href="https://github.com/mikegarton/yt-nugget-pipeline/blob/main/docs/LIMITS.md" target="_blank" rel="noopener">LIMITS.md (versioned source of truth) <span class="badge">github</span></a>
+      <a class="doc" href="file:///C:/dev/yt-nugget-pipeline/README.md">pipeline README <span class="badge">local</span></a>
+      <a class="doc" href="capture.html">sending videos — how-to <span class="badge">site</span></a>
+      <a class="doc" href="file:///C:/dev/working_docs/projects/yt-nugget/velocity-study-spec.md">velocity study spec <span class="badge">local</span></a>
+    </div></details>
+  </div>
+</details>
+
+<details class="tree">
+  <summary>studies<small>standalone investigations — cite/append, no open decisions</small></summary>
+  <div class="kids">
+    <details class="tree"><summary>goodness-tests genealogy</summary><div class="kids">
+      <a class="doc" href="file:///C:/dev/working_docs/studies/goodness-tests-genealogy/goodness-tests-genealogy.md">genealogy (main doc) <span class="badge">local</span></a>
+      <a class="doc" href="file:///C:/dev/working_docs/studies/goodness-tests-genealogy/workings/era-reports/">era reports (workings) <span class="badge">folder</span></a>
+    </div></details>
+    <details class="tree"><summary>session archaeology</summary><div class="kids">
+      <a class="doc" href="file:///C:/dev/working_docs/studies/session-archaeology/needs-to-tools-outline.md">needs-to-tools outline <span class="badge">local</span></a>
+      <a class="doc" href="file:///C:/dev/working_docs/studies/session-archaeology/workings/thread-topics/">thread-topic reports (workings) <span class="badge">folder</span></a>
+    </div></details>
+    <details class="tree"><summary>token-efficiency practices</summary><div class="kids">
+      <a class="doc" href="https://claude.ai/code/artifact/17f6f092-dccf-4a17-9576-fc2e33fea2b2" target="_blank" rel="noopener">evidence-backed rules <span class="badge">artifact</span></a>
+    </div></details>
+  </div>
+</details>
 
 <script>
 function esc(s) {
