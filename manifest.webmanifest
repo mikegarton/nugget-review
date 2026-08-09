@@ -1,6 +1,6 @@
 {
-  "name": "Nugget pipeline",
-  "short_name": "Nuggets",
+  "name": "Nugget-capture",
+  "short_name": "N-add",
   "description": "Share-sheet target: share a YouTube video straight into the nugget pipeline.",
   "start_url": "./capture.html",
   "scope": "./",
