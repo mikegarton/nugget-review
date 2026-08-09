@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#101114">
 <title>Sending videos to the pipeline</title>
 <style>
   :root {
@@ -213,6 +215,11 @@ try {
     document.getElementById("key-status").textContent =
       "A review key is already saved on this device.";
 } catch (e) {}
+// PWA install-eligibility: this page is the manifest's start_url, so it
+// must register the service worker for Chrome to offer a real Install.
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(function () {});
+}
 </script>
 </body>
 </html>
