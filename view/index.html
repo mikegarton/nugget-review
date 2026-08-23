@@ -142,7 +142,9 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("../sw.js").c
 // dimension label above; every filter list carries All, first, as default;
 // "Any" is retired. Row order follows the layered rule (§1): cause left of
 // effect, meaning-changers in the no-scroll zone, frequency, utilities last.
-const SCOPES = [["","All"],["subs","Subs"],["substack","Substack"],["manual","My adds"],["campaign","Campaign"]];
+// "YT-subscrip" not "Subs" (Mike, 2026-08-23): "Subs" read as ambiguous next
+// to Substack — both are subscriptions in the ordinary sense.
+const SCOPES = [["","All"],["subs","YT-subscrip"],["substack","Substack"],["manual","My adds"],["campaign","Campaign"]];
 const AGES   = [["","All"],["2","≤ 2 days"],["10","≤ 10 days"],["60","≤ 2 months"],["180","≤ 6 months"],["365","≤ 1 year"]];
 const GROUPS = [["","None"],["video","Video"]];
 // Sort keys (8-10 §3.1 names; Coach/Broccoli renamed 2026-08-22). Each is

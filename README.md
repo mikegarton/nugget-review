@@ -90,8 +90,9 @@ leads with **All** as its default; "Any" is retired. Choices persist in
 modifies another sits to its left; meaning-changers fill the no-scroll
 zone; frequency orders the rest; utilities last.
 
-- **Row 1 — content**: Scope (All · Subs · Substack · My adds · Campaign —
-  provenance only, no group privileged) · Source (only sources present in
+- **Row 1 — content**: Scope (All · YT-subscrip · Substack · My adds ·
+  Campaign — provenance only, no group privileged; "YT-subscrip" = your
+  subscribed YouTube channels, neither campaign-found nor manually added) · Source (only sources present in
   available ∩ scope, alphabetical, each with the channel's running hype
   average; a selection that narrows away resets to All with the yellow
   side-effect fill) · Category (any position in the ordered tag array) ·
