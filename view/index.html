@@ -49,8 +49,10 @@
   .ctl .side-effect { border-color: var(--yellow); color: var(--yellow); }
   .ctl .na { opacity: .45; }
   .ctl select:disabled, .ctl button:disabled { opacity: .4; }
-  /* The Apply card: the one load-triggering control (tier 2). */
-  .ctl button.primary { background: var(--accent); border-color: var(--accent); color: #08131f; font-weight: 600; }
+  /* The Apply chip: the one load-triggering control (tier 2) — row 3, left
+     of Rating, red border, visible only while a load is pending (Mike,
+     2026-08-23). */
+  .ctl button.apply { border-color: #e0704e; color: #e0704e; font-weight: 600; }
   .ctl button.util { border-radius: 8px; padding: 5px 10px; font-size: 13px; }
   .chips .gap { flex: none; border-left: 1px solid var(--line); height: 26px; margin: 0 2px; }
   #count { font-size: 12px; color: var(--faint); margin-top: 5px; }
@@ -117,11 +119,7 @@
 </head>
 <body>
 <header>
-  <div class="bar">
-    <div class="chips" id="row1"></div>
-    <span class="ctl pin"><label>Queued</label>
-      <button id="hideQ" title="hide queued nuggets from the list (they are already decided)"></button></span>
-  </div>
+  <div class="chips" id="row1"></div>
   <div class="chips" id="row2"></div>
   <div class="chips" id="row3"></div>
   <div id="count"></div>
@@ -463,20 +461,19 @@ function renderControls() {
   const scopeDefs = SCOPES.map(([v, l]) => [v, l + fmtN(facets && facets.scopes ? facets.scopes[v || "all"] : null)]);
   const srcAllN = facets && facets.scopes ? facets.scopes[state.scope || "all"] : null;
   const pending = applyPending();
-  // The Apply card (Mike, 2026-08-23): after a Scope or Source change — and
-  // at open — it stands in for Category/Domain/Age until the subset loads,
-  // making the flow explicit: choose Scope (+ Source) → Apply → then filter.
+  // The Apply chip (Mike, 2026-08-23, placement revised same day): row 3,
+  // left of Rating, red border; visible only while a load is pending (Scope
+  // or Source changed, or nothing loaded yet); gone once Apply has run.
   const applyN = selectionCount();
-  const applyHtml = '<span class="ctl"><label for="apply">Load</label>' +
-    '<button id="apply" class="primary" title="load this scope and source">' +
+  const applyHtml = !pending ? "" : '<span class="ctl"><label for="apply">Load</label>' +
+    '<button id="apply" class="apply" title="load this scope and source">' +
     (loading ? "loading…" : "Apply" + (applyN != null ? " — " + Number(applyN).toLocaleString() + (applyN === 1 ? " nugget" : " nuggets") : "")) + "</button></span>";
   document.getElementById("row1").innerHTML =
     selectHtml("cScope", "Scope", scopeDefs, state.scope, fillFor("scope")) +
     selectHtml("cSrc", "Source", [["", "All" + fmtN(srcAllN)]].concat(srcDefs), state.src, srcFill) +
-    (pending ? applyHtml :
-      selectHtml("cCat", "Category", withCount([["","All"]].concat(catList.map(c => [c, esc(c)])), F.cat), state.cat, fillFor("cat")) +
-      selectHtml("cDomain", "Domain", withCount([["","All"]].concat(domains.map(d => [d, esc(d)])), F.domain), state.domain, fillFor("domain")) +
-      selectHtml("cAge", "Age", withCount(AGES, F.age), state.age, fillFor("age")));
+    selectHtml("cCat", "Category", withCount([["","All"]].concat(catList.map(c => [c, esc(c)])), F.cat), state.cat, fillFor("cat")) +
+    selectHtml("cDomain", "Domain", withCount([["","All"]].concat(domains.map(d => [d, esc(d)])), F.domain), state.domain, fillFor("domain")) +
+    selectHtml("cAge", "Age", withCount(AGES, F.age), state.age, fillFor("age"));
   // Row 2 — order: Group, Sort, Dir (cause left of effect; Group writes
   // Sort's default, so its yellow side-effect appears downstream).
   const sortFill = state.sortOrigin === "side_effect" ? "side-effect" : fillFor("sort");
@@ -485,30 +482,30 @@ function renderControls() {
     selectHtml("cSort", "Sort", SORTS.map(s => [s[0], s[1]]), state.sort, sortFill) +
     '<span class="ctl"><label for="cDir">Dir</label><button id="cDir" class="' + (state.dir === "asc" ? "user-set" : "") +
       '" title="ascending is the weeding view">' + (state.dir === "asc" ? "▲ asc" : "▼ desc") + "</button></span>";
-  // Row 3 — judgment + utilities: Rating, Expired, gap, zoom pair.
+  // Row 3 — [Apply while pending], Rating, Expired, Queued (Q), gap, zoom pair.
+  // "Queued (Q)" included/hidden (renamed 2026-08-23 — "Q shown" did not say
+  // what it did): nuggets you marked Q are either included in the list or
+  // hidden from it; the clips page / playlist remain the queue view.
   document.getElementById("row3").innerHTML =
+    applyHtml +
     selectHtml("cRate", "Rating", withCount(RATEFS, F.rating), state.ratef, fillFor("ratef")) +
     '<span class="ctl"><label for="cExp">Expired</label><button id="cExp" class="' + (state.expired ? "user-set" : "") +
       '" title="re-admit unrated nuggets past their categories\' TTL">' + (state.expired ? "shown" : "hidden") + "</button></span>" +
+    '<span class="ctl"><label for="hideQ">Queued (Q)</label><button id="hideQ" class="' + (state.hideQ ? "user-set" : "") +
+      '" title="nuggets you marked Q: included in the list, or hidden from it">' + (state.hideQ ? "hidden" : "included") + "</button></span>" +
     '<span class="gap"></span>' +
     '<span class="ctl"><label>&nbsp;</label><button id="zoomOut" class="util" title="smaller text">A−</button></span>' +
     '<span class="ctl"><label>&nbsp;</label><button id="zoomIn" class="util" title="larger text">A+</button></span>';
-  // Pinned — Hide-queued (far right, never scrolls).
   const hq = document.getElementById("hideQ");
-  hq.className = state.hideQ ? "user-set" : "";
-  hq.textContent = state.hideQ ? "Q hidden" : "Q shown";
 
   bind("cScope", "scope");
   bind("cSrc", "src", () => { state.srcOrigin = "user"; });
-  if (pending) {
-    document.getElementById("apply").onclick = () => { if (!loading) loadData(); };
-  } else {
-    bind("cCat", "cat");
-    bind("cDomain", "domain");
-    bind("cAge", "age");
-  }
-  // Rows 2-3 are inert until a subset is loaded (no index to order or judge).
-  for (const id of ["cGroup", "cSort", "cDir", "cRate", "cExp", "zoomIn", "zoomOut", "hideQ"]) {
+  if (pending) document.getElementById("apply").onclick = () => { if (!loading) loadData(); };
+  bind("cCat", "cat");
+  bind("cDomain", "domain");
+  bind("cAge", "age");
+  // Everything but Scope/Source/Apply is inert until a subset is loaded.
+  for (const id of ["cCat", "cDomain", "cAge", "cGroup", "cSort", "cDir", "cRate", "cExp", "zoomIn", "zoomOut", "hideQ"]) {
     const el = document.getElementById(id);
     if (el) el.disabled = !loadedSel;
   }
