@@ -504,7 +504,12 @@ function renderControls() {
     selectHtml("cGroup", "Group", GROUPS, state.group, fillFor("group")) +
     selectHtml("cSort", "Sort", SORTS.map(s => [s[0], s[1]]), state.sort, sortFill) +
     '<span class="ctl"><label for="cDir">Dir</label><button id="cDir" class="' + (state.dir === "asc" ? "user-set" : "") +
-      '" title="ascending is the weeding view">' + (state.dir === "asc" ? "▲ asc" : "▼ desc") + "</button></span>";
+      '" title="ascending is the weeding view">' + (state.dir === "asc" ? "▲ asc" : "▼ desc") + "</button></span>" +
+    '<span class="gap"></span>' +
+    // The lists page (audio clips / video list / read-aloud) lives in this
+    // app's scope; the installed app has no address bar, so it needs a
+    // door from here (Mike, 2026-08-23).
+    '<span class="ctl"><label>Lists</label><a class="watch gwatch" style="padding:6px 12px;border-radius:16px" href="clips.html" title="audio clips · video list · read-aloud">A / V / R ›</a></span>';
   // Row 3 — [Apply while pending], Rating, Expired, Queued (Q), gap, zoom pair.
   // "Queued (Q)" included/hidden (renamed 2026-08-23 — "Q shown" did not say
   // what it did): nuggets you marked Q are either included in the list or
