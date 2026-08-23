@@ -1,15 +1,16 @@
 {
+  "id": "./",
   "name": "Nugget-capture",
   "short_name": "N-add",
   "description": "Share-sheet target: share a YouTube video straight into the nugget pipeline.",
-  "start_url": "./capture.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#101114",
   "theme_color": "#101114",
   "icons": [
-    { "src": "icon192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icon512.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "../icon192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "../icon512.png", "sizes": "512x512", "type": "image/png" }
   ],
   "share_target": {
     "action": "./share.html",

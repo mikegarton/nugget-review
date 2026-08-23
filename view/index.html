@@ -1,0 +1,718 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nuggets</title>
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+  :root {
+    --bg: #101114; --card: #1a1c21; --card2: #22252c; --line: #2c3038;
+    --ink: #e8e8e6; --dim: #9a9da5; --faint: #6b6f78;
+    --accent: #5aa8f0; --gold: #e0b34e; --good: #6fc48d;
+    --mint: #7fe3b0; --yellow: #ffd166;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding-bottom: 40px;
+  }
+  header {
+    position: sticky; top: 0; z-index: 5; background: var(--bg);
+    border-bottom: 1px solid var(--line); padding: 6px 10px 6px;
+  }
+  /* Row 1 shares its line with the PINNED Hide-queued toggle: the chips
+     scroll, the pin never does (viewer-spec draft 6 §1, ruling 19). */
+  .bar { display: flex; align-items: flex-end; gap: 8px; }
+  .bar .chips { flex: 1 1 auto; min-width: 0; }
+  .pin { flex: none; }
+  /* One horizontally scrollable row per control group; each control is a
+     dimension label ABOVE its chip, scrolling with it (8-15 ruling). Finger
+     drag, no scrollbar (a bar spends vertical space — Mike, 2026-08-20). */
+  .chips { display: flex; gap: 8px; margin-top: 4px; overflow-x: auto;
+           -webkit-overflow-scrolling: touch; align-items: flex-end;
+           scrollbar-width: none; padding-bottom: 1px; }
+  .chips::-webkit-scrollbar { display: none; }
+  .ctl { display: flex; flex-direction: column; flex: none; }
+  .ctl label { font-size: 10px; color: var(--faint); margin: 0 0 2px 3px;
+               text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+  .ctl select, .ctl button {
+    background: var(--card); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 16px; padding: 6px 12px; font-size: 14px; max-width: 46vw;
+  }
+  /* Chip fills (P-015 / handoff-2026-08-10 §3.4): grey = app default,
+     mint = user choice (value differs from default), yellow = side-effect
+     of another control (decays when the user touches this one), greyed =
+     inapplicable. Applies to selects and buttons alike. */
+  .ctl .user-set { border-color: var(--mint); color: var(--mint); }
+  .ctl .side-effect { border-color: var(--yellow); color: var(--yellow); }
+  .ctl .na { opacity: .45; }
+  .ctl button.util { border-radius: 8px; padding: 5px 10px; font-size: 13px; }
+  .chips .gap { flex: none; border-left: 1px solid var(--line); height: 26px; margin: 0 2px; }
+  #count { font-size: 12px; color: var(--faint); margin-top: 5px; }
+  #status { font-size: 12px; margin-top: 4px; display: none; }
+  #status.quiet { display: block; color: var(--good); }
+  #status.alarm { display: block; color: #e0704e; font-weight: 600; }
+  #status .p-blue { color: var(--accent); }  #status .p-green { color: var(--good); }
+  #status .p-yellow { color: var(--gold); }  #status .p-red { color: #e0704e; }
+  main { padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; max-width: 760px; margin: 0 auto; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .card.hot1 { border-left: 4px solid var(--good); }
+  .card.hot2 { border-left: 4px solid var(--gold); }
+  .hl { font-weight: 600; cursor: pointer; }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; font-size: 12px; color: var(--dim); }
+  .chip { background: var(--card2); border-radius: 10px; padding: 1px 8px; }
+  .chip.exp { background: none; border: 1px dashed var(--faint); color: var(--faint); }
+  .score { font-variant-numeric: tabular-nums; }
+  .score.a { color: var(--accent); }
+  .score.c { color: var(--gold); }
+  /* Q badge (spec §3.12): outline when off, green fill when queued. Tappable
+     in the meta row — one-tap admission without expanding the card. */
+  .qd { background: none; border: 1px solid var(--faint); color: var(--faint);
+        border-radius: 10px; padding: 0 9px; font-size: 12px; font-weight: 700;
+        line-height: 18px; cursor: pointer; }
+  .qd.on { background: var(--good); border-color: var(--good); color: #08130c; }
+  .qd.half { border-color: var(--good); color: var(--good); }
+  .body { display: none; margin-top: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .card.open .body { display: block; }
+  .content { white-space: pre-wrap; }
+  .rationale { margin-top: 8px; font-size: 15px; color: var(--gold); }
+  .actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .watch {
+    display: inline-block; background: var(--accent); color: #08131f;
+    border-radius: 8px; padding: 8px 14px; text-decoration: none; font-weight: 600; font-size: 14px;
+  }
+  .stars { display: flex; gap: 2px; }
+  .stars button {
+    background: none; border: none; font-size: 24px; color: var(--faint);
+    padding: 2px 4px; line-height: 1;
+  }
+  .stars button.lit { color: var(--gold); }
+  .chip.res { font-size: 14px; color: var(--gold); }
+  .gstars button { font-size: 20px; padding: 2px 3px; }
+  .rnote { margin-top: 8px; font-size: 12px; color: var(--faint); }
+  .toast { background: var(--card2); border: 1px solid var(--gold); color: var(--gold);
+           border-radius: 10px; padding: 6px 10px; font-size: 13px; margin-top: 8px; }
+  .ghead {
+    background: var(--card2); border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 12px;
+  }
+  .ghead .gtitle { font-weight: 600; cursor: pointer; }
+  .ghead .ytitle { margin-top: 2px; font-size: 13px; color: var(--ink); }
+  .gmeta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 5px; font-size: 12px; color: var(--dim); }
+  .gwatch { padding: 5px 10px; font-size: 13px; }
+  .gcards {
+    display: flex; flex-direction: column; gap: 6px;
+    margin-left: 10px; border-left: 2px solid var(--line); padding-left: 8px;
+  }
+  .empty { color: var(--faint); text-align: center; padding: 40px 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div class="chips" id="row1"></div>
+    <span class="ctl pin"><label>Queued</label>
+      <button id="hideQ" title="hide queued nuggets from the list (they are already decided)"></button></span>
+  </div>
+  <div class="chips" id="row2"></div>
+  <div class="chips" id="row3"></div>
+  <div id="count"></div>
+  <div id="status"></div>
+</header>
+<main id="list"><div class="empty">Loading…</div></main>
+<script>
+// Static shell (GitHub Pages). All data comes from the key-gated Supabase
+// function below; the key lives in the bookmark's ?key= parameter and, once
+// seen, in this device's localStorage (cr_review_key — shared with the
+// capture surfaces) so an installed app (N-view, RV-031) opens without a
+// key in its start_url.
+const BASE = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-review";
+const urlKey = new URLSearchParams(location.search).get("key");
+if (urlKey) localStorage.setItem("cr_review_key", urlKey);
+const KEY = urlKey || localStorage.getItem("cr_review_key");
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("../sw.js").catch(() => {});
+
+// Controls per viewer-spec draft 6 (working_docs projects/nugget-review/
+// viewer-spec.md): every mutually exclusive set is ONE dropdown with its
+// dimension label above; every filter list carries All, first, as default;
+// "Any" is retired. Row order follows the layered rule (§1): cause left of
+// effect, meaning-changers in the no-scroll zone, frequency, utilities last.
+const SCOPES = [["","All"],["subs","Subs"],["substack","Substack"],["manual","My adds"],["campaign","Campaign"]];
+const AGES   = [["","All"],["2","≤ 2 days"],["10","≤ 10 days"],["60","≤ 2 months"],["180","≤ 6 months"],["365","≤ 1 year"]];
+const GROUPS = [["","None"],["video","Video"]];
+// Sort keys (8-10 §3.1 names; Coach/Broccoli renamed 2026-08-22). Each is
+// [key, label, value-of-nugget, null-allowed]. Nulls sort LAST in both
+// directions; ties break on Appeal desc then id — a total, stable order.
+const SORTS = [
+  ["appeal",     "Appeal",     n => n.personal_score],
+  ["coach",      "Coach",      n => n.expert_score],
+  ["broccoli",   "Broccoli",   n => residual(n)],
+  ["needs_viz",  "Needs-viz",  n => n.needsViz],
+  ["my_rating",  "My_rating",  n => n.rating],
+  ["yt_views",   "YT_views",   n => n.viewCount],
+  ["duration",   "Duration",   n => n.durationSeconds],
+  ["date_pub",   "Date-pub",   n => ts(n.publishedAt || n.created_at)],
+  ["date_add",   "Date-add",   n => ts(n.manualAddedAt || n.discoveredAt || n.created_at)],
+  ["date_dug",   "Date-dug",   n => ts(n.created_at)],
+  ["date_q",     "Date-Q",     n => ts(n.queuedAt)],
+  ["date_rev",   "Date-rev",   n => ts(n.reviewedAt)],
+];
+const RATEFS = [["","All"],["unrated","Unrated"],["5","5 ★"],["4","≥ 4 ★"],["3","3 ★"],["pickled","Pickled (1–2 ★)"]];
+// yt_nuggets.rating column comment is the source of truth for this scale.
+// One column, the abstract's rating (Mike, 2026-08-22); 1-2 = pickled.
+const SCALE = { 1: "never gonna look (pickled)", 2: "unlikely to use (pickled)",
+  3: "neutral / did not regret", 4: "good", 5: "outstanding" };
+const END_MARGIN = 30; // display clamp: a link never lands past duration − 30 s (spec §7.2)
+const DEFAULTS = { scope: "", src: "", cat: "", domain: "", age: "", ratef: "",
+  expired: false, hideQ: false, sort: "appeal", dir: "desc", sortOrigin: "user",
+  group: "", zoom: 1 };
+let all = [], slope = 0, intercept = 0;
+let catTtls = {}, defaultTtl = 180, catList = [];
+let manualEmpty = [];
+let channelHype = new Map();
+// Storage key bumped ytr2 -> ytr3 (2026-08-22): state shape changed again
+// (state chips/watched gone; dir, hideQ, sortOrigin, group-as-value added).
+let state = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem("ytr3") || "{}"));
+let openId = null;
+let collapsed = new Set();
+// Cards mutated while on screen keep their spot even once they stop passing
+// the filters (a 1-2 star tap shows its pickled acknowledgment instead of
+// vanishing mid-tap). Cleared on any filter/sort/group change.
+let pinned = new Set();
+let toasts = new Map(); // nugget id -> acknowledgment text, cleared with pinned
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g,
+    (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function save() { localStorage.setItem("ytr3", JSON.stringify(state)); }
+function ts(iso) { return iso ? new Date(iso).getTime() : null; }
+function fmtT(s) { return Math.floor(s/60) + ":" + String(s%60).padStart(2,"0"); }
+function fmtD(iso) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+function fmtDur(s) {
+  const m = Math.round(s / 60);
+  return m >= 60 ? Math.floor(m / 60) + "h " + (m % 60) + "m" : m + " min";
+}
+// Broccoli = the regression residual (coach score above what the appeal
+// prediction explains), NOT a raw subtraction — a label promising
+// subtraction would lie (8-10 §3.1).
+function residual(n) { return n.expert_score - (intercept + slope * n.personal_score); }
+
+function regress() {
+  const pts = all.filter(n => n.personal_score != null && n.expert_score != null);
+  const N = pts.length;
+  if (N < 3) { slope = 0; intercept = 0; return; }
+  let sx=0, sy=0, sxx=0, sxy=0;
+  for (const n of pts) { sx+=n.personal_score; sy+=n.expert_score;
+    sxx+=n.personal_score*n.personal_score; sxy+=n.personal_score*n.expert_score; }
+  const denom = N*sxx - sx*sx;
+  slope = denom ? (N*sxy - sx*sy) / denom : 0;
+  intercept = (sy - slope*sx) / N;
+}
+
+function categoriesOf(n) {
+  return (n.categories && n.categories.length) ? n.categories
+    : (n.nugget_type ? [n.nugget_type] : []);
+}
+
+// ---- derived predicates (spec §2) ----------------------------------------
+function pickled(n) { return n.rating != null && n.rating <= 2; }
+function queued(n) { return !!n.queuedAt; }
+// Soft expiry: UNRATED and older (by created_at) than the max TTL over its
+// tags. Returns the trigger {tag, days} so the badge can name WHICH tag's
+// TTL fired (Automatic behavior shows its trigger), or null.
+function expiry(n) {
+  if (n.rating != null) return null;
+  const cats = categoriesOf(n);
+  if (!cats.length) return null;
+  let tag = null, ttl = -1;
+  for (const c of cats) { const t = catTtls[c] ?? defaultTtl; if (t > ttl) { ttl = t; tag = c; } }
+  return Date.now() - new Date(n.created_at) > ttl * 86400000 ? { tag, days: ttl } : null;
+}
+function isExpired(n) { return expiry(n) != null; }
+// Display clamp (spec §7.2): the link never lands past duration − 30 s.
+function displayStart(n) {
+  if (n.start_seconds == null) return null;
+  if (!n.durationSeconds) return n.start_seconds;
+  return Math.max(0, Math.min(n.start_seconds, n.durationSeconds - END_MARGIN));
+}
+
+// Scope = provenance only, no quality judgment anywhere.
+function scopePass(n) {
+  const manual = !!(n.sourceKey && n.sourceKey.endsWith("_manual"));
+  switch (state.scope) {
+    case "subs":     return n.source === "youtube" && n.campaignId == null && !manual;
+    case "substack": return n.source === "substack";
+    case "manual":   return manual;
+    case "campaign": return n.campaignId != null;
+    default:         return true;
+  }
+}
+
+// Judgment filters (Rating dropdown + Expired toggle + Hide-queued). These
+// alone define "available" in the header; content filters are ignored there.
+// Default view: NOT pickled AND NOT expired; pickled is reachable ONLY via
+// Rating -> Pickled (ruling 1a); Expired=shown re-admits expired only.
+function judgmentPass(n) {
+  const r = state.ratef;
+  if (r === "pickled") return pickled(n);
+  if (pickled(n)) return false;
+  if (r === "unrated" && n.rating != null) return false;
+  if (r === "5" && n.rating !== 5) return false;
+  if (r === "4" && !(n.rating >= 4)) return false;
+  if (r === "3" && n.rating !== 3) return false;
+  if (!state.expired && isExpired(n)) return false;
+  if (state.hideQ && queued(n)) return false;
+  return true;
+}
+
+function contentPass(n) {
+  return scopePass(n) &&
+    (!state.src || n.channelLabel === state.src) &&
+    (!state.cat || categoriesOf(n).includes(state.cat)) &&
+    (!state.domain || n.domain === state.domain) &&
+    (!state.age || Date.now() - new Date(n.publishedAt || n.created_at) <= state.age * 86400000);
+}
+
+// THE declared sort (P-002): one key, one direction, nulls last both ways,
+// total tie-break — every rendered sibling list is fully ordered by it.
+function sortDef() { return SORTS.find(s => s[0] === state.sort) || SORTS[0]; }
+function comparator() {
+  const get = sortDef()[2];
+  const sign = state.dir === "asc" ? 1 : -1;
+  return (a, b) => {
+    const va = get(a), vb = get(b);
+    const na = va == null || Number.isNaN(va), nb = vb == null || Number.isNaN(vb);
+    if (na && nb) return tieBreak(a, b);
+    if (na) return 1;
+    if (nb) return -1;
+    if (va !== vb) return (va < vb ? -1 : 1) * sign;
+    return tieBreak(a, b);
+  };
+}
+function tieBreak(a, b) {
+  return (b.personal_score - a.personal_score) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
+function visible() {
+  const v = all.filter(n => (contentPass(n) && judgmentPass(n)) || pinned.has(n.id));
+  v.sort(comparator());
+  return v;
+}
+
+// ---- controls --------------------------------------------------------------
+// One dropdown control: label above, options, fill class by origin.
+function selectHtml(id, label, defs, value, fill, extraClass) {
+  return '<span class="ctl"><label for="' + id + '">' + label + '</label>' +
+    '<select id="' + id + '" class="' + (fill || "") + (extraClass ? " " + extraClass : "") + '">' +
+    defs.map(([val, lab]) => '<option value="' + esc(val) + '"' + (String(val) === String(value) ? " selected" : "") + '>' + lab + "</option>").join("") +
+    "</select></span>";
+}
+function fillFor(prop) {
+  return String(state[prop] ?? "") !== String(DEFAULTS[prop] ?? "") ? "user-set" : "";
+}
+function sourceDefs() {
+  // Vocabulary = sources present in available ∩ selected scope (alphabetical
+  // — a lookup aid inside a long list), each with the channel's running hype
+  // average, the weeding signal.
+  const opts = [...new Set(all.filter(n => judgmentPass(n) && scopePass(n))
+    .map(n => n.channelLabel).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  return opts.map(vv => {
+    const h = channelHype.get(vv);
+    return [vv, esc(h == null ? vv : vv + " (" + (h > 0 ? "+" : "") + Number(h).toFixed(1) + ")")];
+  });
+}
+
+function renderControls() {
+  // Row 1 — content: Scope, Source, Category, Domain, Age.
+  const srcDefs = sourceDefs();
+  // Scope's declared side-effect on Source: a selection that narrowed away
+  // resets to All and takes the yellow fill until the user touches Source.
+  if (state.src && !srcDefs.some(([v]) => v === state.src)) { state.src = ""; state.srcOrigin = "side_effect"; save(); }
+  const srcFill = srcDefs.length === 0 ? "na" : state.srcOrigin === "side_effect" ? "side-effect" : fillFor("src");
+  const domains = [...new Set(all.map(n => n.domain).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  document.getElementById("row1").innerHTML =
+    selectHtml("cScope", "Scope", SCOPES, state.scope, fillFor("scope")) +
+    selectHtml("cSrc", "Source", [["","All"]].concat(srcDefs), state.src, srcFill) +
+    selectHtml("cCat", "Category", [["","All"]].concat(catList.map(c => [c, esc(c)])), state.cat, fillFor("cat")) +
+    selectHtml("cDomain", "Domain", [["","All"]].concat(domains.map(d => [d, esc(d)])), state.domain, fillFor("domain")) +
+    selectHtml("cAge", "Age", AGES, state.age, fillFor("age"));
+  // Row 2 — order: Group, Sort, Dir (cause left of effect; Group writes
+  // Sort's default, so its yellow side-effect appears downstream).
+  const sortFill = state.sortOrigin === "side_effect" ? "side-effect" : fillFor("sort");
+  document.getElementById("row2").innerHTML =
+    selectHtml("cGroup", "Group", GROUPS, state.group, fillFor("group")) +
+    selectHtml("cSort", "Sort", SORTS.map(s => [s[0], s[1]]), state.sort, sortFill) +
+    '<span class="ctl"><label for="cDir">Dir</label><button id="cDir" class="' + (state.dir === "asc" ? "user-set" : "") +
+      '" title="ascending is the weeding view">' + (state.dir === "asc" ? "▲ asc" : "▼ desc") + "</button></span>";
+  // Row 3 — judgment + utilities: Rating, Expired, gap, zoom pair.
+  document.getElementById("row3").innerHTML =
+    selectHtml("cRate", "Rating", RATEFS, state.ratef, fillFor("ratef")) +
+    '<span class="ctl"><label for="cExp">Expired</label><button id="cExp" class="' + (state.expired ? "user-set" : "") +
+      '" title="re-admit unrated nuggets past their categories\' TTL">' + (state.expired ? "shown" : "hidden") + "</button></span>" +
+    '<span class="gap"></span>' +
+    '<span class="ctl"><label>&nbsp;</label><button id="zoomOut" class="util" title="smaller text">A−</button></span>' +
+    '<span class="ctl"><label>&nbsp;</label><button id="zoomIn" class="util" title="larger text">A+</button></span>';
+  // Pinned — Hide-queued (far right, never scrolls).
+  const hq = document.getElementById("hideQ");
+  hq.className = state.hideQ ? "user-set" : "";
+  hq.textContent = state.hideQ ? "Q hidden" : "Q shown";
+
+  bind("cScope", "scope");
+  bind("cSrc", "src", () => { state.srcOrigin = "user"; });
+  bind("cCat", "cat");
+  bind("cDomain", "domain");
+  bind("cAge", "age");
+  bind("cGroup", "group", () => {
+    // Group=Video's default sort is My_rating (CONFIRMED 2026-08-20) — a
+    // declared side-effect, yellow until the user touches Sort (P-015).
+    if (state.group === "video") { state.sort = "my_rating"; state.sortOrigin = "side_effect"; }
+  });
+  bind("cSort", "sort", () => { state.sortOrigin = "user"; });
+  bind("cRate", "ratef");
+  document.getElementById("cDir").onclick = () => {
+    state.dir = state.dir === "asc" ? "desc" : "asc"; state.sortOrigin = "user"; touched();
+  };
+  document.getElementById("cExp").onclick = () => { state.expired = !state.expired; touched(); };
+  hq.onclick = () => { state.hideQ = !state.hideQ; touched(); };
+  document.getElementById("zoomIn").onclick = () => zoomStep(1);
+  document.getElementById("zoomOut").onclick = () => zoomStep(-1);
+}
+function bind(id, prop, after) {
+  const el = document.getElementById(id);
+  el.onchange = () => { state[prop] = el.value; if (after) after(); touched(); };
+}
+// Any filter/sort/group change: persist, drop pins and acknowledgments
+// (views stay honest), re-render.
+function touched() { pinned.clear(); toasts.clear(); save(); render(); }
+
+function render() {
+  renderControls();
+  const v = visible();
+  const avail = all.filter(judgmentPass).length;
+  document.getElementById("count").textContent =
+    v.length + " listed / " + avail + " available" +
+    (state.sort === "broccoli" ? " — Broccoli: the coach's score above what your appeal predicts" : "") +
+    " · edge stripe = " + (stripeDim() === "appeal" ? "appeal" : "coach") + " score (green 75+, gold 85+)";
+  const list = document.getElementById("list");
+  const me = manualEmptyHtml();
+  if (!v.length) { list.innerHTML = me + '<div class="empty">Nothing here.</div>'; return; }
+  list.innerHTML = me + (state.group === "video" ? grouped(v) : v.map(card).join(""));
+}
+
+// Manual adds analyzed with ZERO nuggets — shown because you asked (the
+// only honest feedback signal on the extractor). Manual sources only.
+function manualEmptyHtml() {
+  if (!manualEmpty.length || state.scope === "campaign") return "";
+  const rows = manualEmpty.map(v => {
+    const label = v.yt_channels?.label || "?";
+    const link = v.url || "https://www.youtube.com/watch?v=" + v.video_id;
+    const verdict = v.status === "processed" ? "analyzed — no nuggets found"
+      : v.status === "no_transcript" ? "no transcript available"
+      : "failed: " + esc((v.error_detail || v.status).slice(0, 80));
+    return '<div style="margin-top:4px">' +
+      '<a href="' + esc(link) + '" target="_blank" rel="noopener" style="color:var(--ink)">' +
+      esc(v.plain_title || v.title || v.video_id) + "</a>" +
+      ' <span style="color:var(--faint)">· ' + esc(label) + " · " + verdict + "</span></div>";
+  });
+  return '<div class="card" style="border-left:4px solid var(--faint)">' +
+    '<div style="font-size:12.5px;color:var(--dim)"><b>Your manual adds — ' +
+    manualEmpty.length + " with nothing to show</b> (you asked, so here's the answer)</div>" +
+    rows.join("") + "</div>";
+}
+
+// Group=Video: multi-nugget videos under a header; singletons stay plain
+// cards. Groups order by first appearance in the sorted list (= the group's
+// best value under the declared key); items within a group stay in the
+// declared order too (spec §3.7 post) — the storyline order went with the
+// watched controls.
+function grouped(v) {
+  const byVid = new Map();
+  for (const n of v) {
+    if (!byVid.has(n.video_id)) byVid.set(n.video_id, []);
+    byVid.get(n.video_id).push(n);
+  }
+  const out = [], done = new Set();
+  for (const n of v) {
+    if (done.has(n.video_id)) continue;
+    done.add(n.video_id);
+    const g = byVid.get(n.video_id);
+    if (g.length === 1) { out.push(card(n)); continue; }
+    out.push(ghead(n, g));
+    if (!collapsed.has(n.video_id)) out.push('<div class="gcards">' + g.map(card).join("") + "</div>");
+  }
+  return out.join("");
+}
+
+function qBadge(on, half, onclick, title) {
+  return '<button class="qd' + (on ? " on" : half ? " half" : "") + '" title="' + title + '" onclick="' + onclick + '">Q</button>';
+}
+
+function ghead(n, g) {
+  const isC = collapsed.has(n.video_id);
+  const dur = n.durationSeconds ? " in " + fmtDur(n.durationSeconds) : "";
+  // Header stars light to the group's lowest rating (unrated = 0): a fully
+  // rated group reads at a glance, a mixed one stays dark. They are a BULK
+  // control over the group's abstracts — there is no video rating.
+  const gmin = Math.min(...g.map(x => x.rating || 0));
+  const qAll = g.every(queued), qAny = g.some(queued);
+  const humble = n.plainTitle || n.headline || n.videoTitle || n.channelLabel;
+  const hype = n.hypeLevel != null
+    ? '<span class="chip">hype ' + (n.hypeLevel > 0 ? "+" : "") + n.hypeLevel + "</span>" : "";
+  const gen = n.generation > 1 ? '<span class="chip" title="reprocessed generation">(' + n.generation + ")</span>" : "";
+  return '<div class="ghead">' +
+    '<div class="gtitle" onclick="toggleGroup(\'' + n.video_id + '\')">' +
+      (isC ? "&#9656; " : "&#9662; ") + esc(humble) + "</div>" +
+    (n.videoTitle && n.videoTitle !== humble
+      ? '<div class="ytitle">' + esc(n.videoTitle) + "</div>" : "") +
+    '<div class="gmeta">' +
+      "<b>" + esc(n.channelLabel) + "</b>" +
+      "<span>" + fmtD(n.publishedAt || n.created_at) + "</span>" +
+      '<span class="chip">' + g.length + " nuggets" + dur + "</span>" + hype + gen +
+      '<div class="stars gstars">' + [1,2,3,4,5].map(k =>
+        '<button title="' + k + ' — ' + SCALE[k] + ' (rates every unrated nugget; re-tap corrects a uniformly rated group)" class="' +
+          (gmin >= k ? "lit" : "") + '" onclick="rateAll(\'' + n.video_id + '\',' + k + ')">&#9733;</button>'
+      ).join("") + "</div>" +
+      qBadge(qAll, qAny && !qAll, "queueAll('" + n.video_id + "')",
+        qAll ? "queued — tap to clear the whole video" : "queue every nugget in this video") +
+      '<a class="watch gwatch" target="_blank" rel="noopener" href="' +
+        (n.source === "substack" ? esc(n.contentUrl || "#") : "https://www.youtube.com/watch?v=" + n.video_id) + '">' +
+        (n.source === "substack" ? "&#128214; Read" : "&#9654; Watch") + "</a>" +
+    "</div></div>";
+}
+
+function toggleGroup(vid) {
+  collapsed.has(vid) ? collapsed.delete(vid) : collapsed.add(vid);
+  render();
+}
+
+// Header stars rate every *unrated* nugget in the group; mixed individual
+// ratings are never overwritten; a uniformly rated group stays correctable
+// from the header (different star re-rates, same star clears).
+async function rateAll(vid, k) {
+  const g = all.filter(x => x.video_id === vid);
+  let targets = g.filter(x => x.rating == null);
+  let next = k;
+  if (!targets.length) {
+    const first = g[0] && g[0].rating;
+    if (!g.every(x => x.rating === first)) return; // mixed: hands off
+    targets = g;
+    next = first === k ? null : k;
+  }
+  for (const n of targets) { n.rating = next; pinned.add(n.id); if (next != null && next <= 2) toasts.set(n.id, PICKLE_ACK); }
+  render();
+  for (const n of targets) await post("/rate", { id: n.id, rating: next });
+}
+
+// Header Q: every nugget queued -> clear all; otherwise stamp the stragglers
+// (mirror of the rateAll asymmetry).
+async function queueAll(vid) {
+  const g = all.filter(x => x.video_id === vid);
+  const allQ = g.every(queued);
+  const targets = allQ ? g : g.filter(x => !queued(x));
+  const ts = new Date().toISOString();
+  for (const n of targets) { n.queuedAt = allQ ? null : ts; pinned.add(n.id); }
+  render();
+  for (const n of targets) await post("/queued", { id: n.id, queued: !allQ });
+}
+
+// Second-dimension stripe: the sort carries one score, the colored left edge
+// carries the one it ISN'T showing (green >=75, gold >=85).
+function stripeDim() {
+  return (state.sort === "broccoli" || state.sort === "coach") ? "appeal" : "coach";
+}
+function stripeClass(n) {
+  const s = stripeDim() === "appeal" ? n.personal_score : n.expert_score;
+  return s >= 85 ? " hot2" : s >= 75 ? " hot1" : "";
+}
+
+const PICKLE_ACK = "pickled — hidden from the default view (kept; find it under Rating → Pickled)";
+
+function card(n) {
+  const open = n.id === openId;
+  const isPost = n.source === "substack";
+  const start = displayStart(n);
+  const link = isPost ? (n.contentUrl || "#")
+    : "https://www.youtube.com/watch?v=" + n.video_id + (start != null ? "&t=" + start + "s" : "");
+  const watchLabel = isPost ? "&#128214; Read now"
+    : start != null ? "&#9654; Watch at " + fmtT(start) : "&#9654; Watch now";
+  const res = state.sort === "broccoli"
+    ? ' <span class="chip res">coach ' + (residual(n) >= 0 ? "+" : "") + residual(n).toFixed(0) + "</span>" : "";
+  const ex = expiry(n);
+  const toast = toasts.get(n.id);
+  return '<div class="card' + (open ? " open" : "") + stripeClass(n) + '">' +
+    '<div class="hl" onclick="toggle(\'' + n.id + '\')">' + esc(n.headline || n.content.slice(0, 110)) + "</div>" +
+    '<div class="meta">' +
+      "<b>" + esc(n.channelLabel) + "</b>" +
+      "<span>" + fmtD(n.publishedAt || n.created_at) + "</span>" +
+      (n.domain ? '<span class="chip">' + esc(n.domain) + "</span>" : "") +
+      categoriesOf(n).map(c => '<span class="chip">' + esc(c) + "</span>").join("") +
+      (ex ? '<span class="chip exp" title="unrated and older than this tag\'s TTL">expired: ' + esc(ex.tag) + " " + ex.days + "d</span>" : "") +
+      (isPost ? '<span class="chip">substack</span>' : "") +
+      (n.sourceKey && n.sourceKey.endsWith("_manual")
+        ? '<span class="chip" style="color:var(--accent)">manual add</span>' : "") +
+      '<span class="score a" title="Appeal">A' + Math.round(n.personal_score) + "</span>" +
+      '<span class="score c" title="Coach">C' + Math.round(n.expert_score) + "</span>" + res +
+      (n.needsViz != null && n.needsViz >= 50
+        ? '<span class="chip" title="needs the screen to understand">viz ' + n.needsViz + "</span>" : "") +
+      (n.rating ? '<span class="chip" style="color:var(--gold)">&#9733;' + n.rating + "</span>" : "") +
+      (isPost ? "" : qBadge(queued(n), false, "queueOne('" + n.id + "')",
+        queued(n) ? "queued — tap to clear" : "queue: want to watch this one")) +
+    "</div>" +
+    (toast ? '<div class="toast">' + toast + "</div>" : "") +
+    '<div class="body">' +
+      '<div class="content">' + esc(n.content) + "</div>" +
+      (n.rationale ? '<div class="rationale">' + esc(n.rationale) + "</div>" : "") +
+      '<div class="actions">' +
+        '<a class="watch" target="_blank" rel="noopener" href="' + link + '">' + watchLabel + "</a>" +
+        '<div class="stars">' + [1,2,3,4,5].map(k =>
+          '<button title="' + k + ' — ' + SCALE[k] + '" class="' + (n.rating >= k ? "lit" : "") + '" onclick="rate(\'' + n.id + '\',' + k + ')">&#9733;</button>'
+        ).join("") + "</div>" +
+      "</div>" +
+      '<div class="rnote">' + rnote(n) + "</div>" +
+    "</div></div>";
+}
+
+// Legend under the stars: the stars rate the abstract — the only rating.
+function rnote(n) {
+  const pre = n.campaignId ? "prospect · ratings teach the campaign<br>" : "";
+  if (!n.rating) return pre + "stars rate the abstract · 1–2 pickles it (kept, hidden) · Q = want to watch";
+  return pre + "&#9733;" + n.rating + " — " + SCALE[n.rating];
+}
+
+function toggle(id) { openId = openId === id ? null : id; render(); }
+
+// A failed save must never look like a successful one.
+async function post(path, body) {
+  try {
+    const res = await fetch(BASE + path + "?key=" + encodeURIComponent(KEY), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+  } catch (e) {
+    alert("NOT SAVED (" + path + "): " + e.message +
+      "\nThe change you just made was not stored - reload and retry.");
+  }
+}
+async function rate(id, k) {
+  const n = all.find(x => x.id === id);
+  const next = n.rating === k ? null : k; // tap the same star again to clear
+  n.rating = next; pinned.add(id);
+  if (next != null && next <= 2) toasts.set(id, PICKLE_ACK); else toasts.delete(id);
+  render();
+  await post("/rate", { id, rating: next });
+}
+async function queueOne(id) {
+  const n = all.find(x => x.id === id);
+  n.queuedAt = n.queuedAt ? null : new Date().toISOString();
+  pinned.add(id); render();
+  await post("/queued", { id, queued: !!n.queuedAt });
+}
+
+// Pace = (used/quota) / elapsed-fraction, colored like the ops burn cards.
+function paceHtml(used, quota, elapsed, limiter) {
+  if (!quota || !elapsed) return "";
+  const r = (used / quota) / Math.max(elapsed, 0.02);
+  const cls = r < 0.5 ? "p-blue" : r <= 1 ? "p-green" : r <= 1.3 ? "p-yellow" : "p-red";
+  return ' <span class="' + cls + '">' + r.toFixed(1) + "&times; pace</span> <span style=\"opacity:.75\">(" + limiter + ")</span>";
+}
+
+function renderStatus(s) {
+  const el = document.getElementById("status");
+  if (!s) return;
+  if (s.alarms && s.alarms.length) {
+    el.className = "alarm";
+    el.textContent = "⚠ " + s.alarms.join(" · ");
+  } else {
+    const bits = [];
+    if (s.mtd_cost_usd != null) {
+      const d = new Date();
+      const monthFrac = d.getDate() / new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+      bits.push("$" + Number(s.mtd_cost_usd).toFixed(2) +
+        paceHtml(Number(s.mtd_cost_usd), s.claude_budget_usd, monthFrac, "soft $ budget"));
+    }
+    if (s.supadata) {
+      bits.push("pulls " + s.supadata.mtd_calls + "/" + s.supadata.allotment +
+        paceHtml(s.supadata.mtd_calls, s.supadata.allotment, s.supadata.cycle_fraction, "Supadata cycle"));
+    }
+    if (s.drift && s.drift.detail) bits.push(s.drift.breach ? "drift: watch" : "drift ok");
+    if (!bits.length) return;
+    el.className = "quiet";
+    el.innerHTML = "✓ " + bits.join(" &nbsp;·&nbsp; ");
+  }
+}
+
+function applyZoom() { document.body.style.zoom = state.zoom || 1; }
+function zoomStep(dir) {
+  const z = (state.zoom || 1) * (dir > 0 ? 1.2 : 1 / 1.2);
+  state.zoom = Math.round(Math.min(2.5, Math.max(0.58, z)) * 100) / 100;
+  save(); applyZoom();
+}
+
+async function load() {
+  if (!KEY) {
+    document.getElementById("list").innerHTML =
+      '<div class="empty">Missing ?key= in the URL — open this page from your bookmark once; this device remembers it afterwards.</div>';
+    return;
+  }
+  let res;
+  try {
+    res = await fetch(BASE + "/data?key=" + encodeURIComponent(KEY));
+  } catch (e) {
+    document.getElementById("list").innerHTML = '<div class="empty">Could not reach the nugget API.</div>';
+    return;
+  }
+  if (!res.ok) {
+    document.getElementById("list").innerHTML =
+      '<div class="empty">API error ' + res.status + (res.status === 401 ? " — key rejected." : "") + "</div>";
+    return;
+  }
+  const data = await res.json();
+  renderStatus(data.status);
+  manualEmpty = data.manual_empty || [];
+  catTtls = data.category_ttls || {};
+  defaultTtl = data.default_ttl_days || 180;
+  all = (data.nuggets || []).map(n => ({
+    ...n,
+    channelLabel: n.yt_videos?.yt_channels?.label || n.yt_videos?.channel_id || "?",
+    videoTitle: n.yt_videos?.title || "",
+    plainTitle: n.yt_videos?.plain_title || "",
+    hypeLevel: n.yt_videos?.hype_level ?? null,
+    campaignId: n.yt_videos?.campaign_id ?? null,
+    source: n.yt_videos?.source || "youtube",
+    sourceKey: n.yt_videos?.source_key || null,
+    discoveredAt: n.yt_videos?.discovered_at || null,
+    manualAddedAt: n.yt_videos?.manual_added_at || null,
+    generation: n.yt_videos?.generation ?? 1,
+    contentUrl: n.yt_videos?.url || null,
+    publishedAt: n.yt_videos?.published_at,
+    durationSeconds: n.yt_videos?.duration_seconds ?? null,
+    viewCount: n.yt_videos?.view_count ?? null,
+    needsViz: n.needs_viz ?? null,
+    queuedAt: n.queued_at || null,
+    reviewedAt: n.reviewed_at || null,
+  }));
+  channelHype = new Map((data.channel_hype || []).map(c => [c.label, c.avg_hype]));
+  regress();
+  // Category vocabulary: server-known tags first (TTL seed order), then
+  // anything present only in the data (legacy pseudo-tags), alphabetical.
+  const seen = new Set(all.flatMap(n => categoriesOf(n)));
+  catList = Object.keys(catTtls).filter(c => seen.has(c))
+    .concat([...seen].filter(c => !(c in catTtls)).sort());
+  applyZoom();
+  render();
+}
+load();
+</script>
+</body>
+</html>

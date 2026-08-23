@@ -5,16 +5,24 @@ Phone-first review dashboard for the [nugget pipeline]
 Substack publications through one review loop. This repo is the **static
 shell only**, served by GitHub Pages (public + Pages enabled 2026-07-29):
 
-- `index.html` — the viewer (filter, sort, rate abstracts, queue clips;
-  shows manual adds that produced zero nuggets — you asked, so the answer
-  is shown). Installable as **N-view** (`manifest-view.webmanifest`).
-- `clips.html` — the clip player (2026-08-22): plays the queued nuggets as
-  clips back-to-back in an embedded YouTube player — one tap, phone in the
-  pocket, audio on earbuds. Same key as the viewer.
-- `ops.html` — burn rates, campaign yields, channel + per-source economics,
-  live knobs (marked knobs and per-source priority editable with the ops
-  write key; bounds enforced server-side, changes audited). Installable as
-  **N-ops** (`manifest-ops.webmanifest`).
+Layout since 2026-08-23: **one folder per installable app**, each with
+its own `manifest.webmanifest` whose `scope` is that folder — Chrome
+treats overlapping scopes as ONE app (an N-add installed with the old
+whole-site scope made the viewer "already installed" and uninstallable
+as its own app). Root `index.html` / `ops.html` / `capture.html` /
+`share.html` are one-line redirects that carry the query string, so old
+bookmarks and an old N-add's share action keep working.
+
+- `view/index.html` — the viewer (filter, sort, rate abstracts, queue
+  clips; shows manual adds that produced zero nuggets — you asked, so the
+  answer is shown). Installable as **N-view** (`view/manifest.webmanifest`).
+- `view/clips.html` — the clip player (2026-08-22): plays the queued
+  nuggets as clips back-to-back in an embedded YouTube player — one tap,
+  phone in the pocket, audio on earbuds. Same key as the viewer.
+- `ops/index.html` — burn rates, campaign yields, channel + per-source
+  economics, live knobs (marked knobs and per-source priority editable with
+  the ops write key; bounds enforced server-side, changes audited).
+  Installable as **N-ops** (`ops/manifest.webmanifest`).
 - The control room (`home.html`) moved to `C:\dev\control-room\` on
   2026-08-08 — it is a cross-project personal hub, not part of this app's
   shell. The paste box for sending YouTube links (`yt-add`) lives there.
@@ -22,18 +30,19 @@ shell only**, served by GitHub Pages (public + Pages enabled 2026-07-29):
   current tab's video to the pipeline; right-click any YouTube link for the
   context menu; badge counts today's adds. Endpoint + review key live in
   the extension's own storage, never in this repo.
-- `capture.html` — user instructions for all four capture surfaces
+- `capture/index.html` — user instructions for all four capture surfaces
   (extension install/use, the Android share sheet, the unlisted-playlist
   inbox that covers the NVIDIA Shield and phone/tablet YouTube apps, and
   the paste box), plus the on-site review-key save box (`#setup`) that the
   share handler depends on; it is also the **N-add** PWA `start_url`
-- `manifest.webmanifest` + `sw.js` + `share.html` — N-add: the installable
-  PWA whose `share_target` puts "Nuggets" in Android's share sheet; YouTube
-  app → Share → Nuggets posts the video to `yt-add` (share.html reads the
-  review key saved by capture.html's setup box). The service worker caches
-  nothing — install-eligibility only. N-view and N-ops reuse the same
-  worker; only N-add carries the share_target (keeps the share sheet
-  single). Icons: gold N = N-add, blue N+V = N-view, green N+O = N-ops.
+- `capture/manifest.webmanifest` + `capture/share.html` + root `sw.js` —
+  N-add: the installable PWA whose `share_target` puts "Nuggets" in
+  Android's share sheet; YouTube app → Share → Nuggets posts the video to
+  `yt-add` (share.html reads the review key saved by the setup box). The
+  service worker (root, registered as `../sw.js` by every page) caches
+  nothing — install-eligibility only. Only N-add carries the share_target
+  (keeps the share sheet single). Icons: gold N = N-add, blue N+V = N-view,
+  green N+O = N-ops.
 
 It contains no data and no secrets: all data comes from the pipeline's
 key-gated `yt-review` Supabase function (JSON, CORS-enabled). The key
@@ -46,7 +55,9 @@ Why Pages: Supabase's gateway rewrites any `text/html` response from
 `*.supabase.co` to `text/plain` with a sandbox CSP, so the shell cannot be
 served next to the API.
 
-Bookmark: `https://mikegarton.github.io/nugget-review/?key=<YT_REVIEW_KEY>`
+Bookmark: `https://mikegarton.github.io/nugget-review/view/?key=<YT_REVIEW_KEY>`
+(the old root URL redirects there). Clips: `…/nugget-review/view/clips.html`;
+ops: `…/nugget-review/ops/`; capture how-to: `…/nugget-review/capture/`.
 
 ## The review loop (2026-08-22)
 
@@ -159,4 +170,7 @@ sortable source column, and every tunable number live from `yt_params`.
 ## Deploying
 
 Push to `main`; GitHub Pages serves the repo root. The API base URL is
-hardcoded in `index.html`, `clips.html`, and `ops.html`.
+hardcoded in `view/index.html`, `view/clips.html`, and `ops/index.html`.
+Phone note: an N-add installed before 2026-08-23 keeps the old whole-site
+scope until it is uninstalled and reinstalled from `capture/`; until then
+Chrome reports the viewer and ops as "already installed".

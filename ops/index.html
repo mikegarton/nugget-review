@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nugget ops</title>
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+  :root {
+    --bg: #101114; --card: #1a1c21; --card2: #22252c; --line: #2c3038;
+    --ink: #e8e8e6; --dim: #9a9da5; --accent: #5aa8f0; --gold: #e0b34e;
+    --good: #6fc48d; --orange: #e5893f; --bad: #e25555;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 12px 10px 60px; max-width: 900px; margin: 0 auto;
+  }
+  h1 { font-size: 20px; margin-bottom: 2px; }
+  .sub { color: var(--dim); font-size: 13px; margin-bottom: 14px; }
+  h2 { font-size: 16px; margin: 22px 0 8px; }
+  .cards { display: flex; flex-wrap: wrap; gap: 8px; }
+  .bcard {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 12px; font-size: 13px; min-width: 220px;
+  }
+  .bcard b { font-size: 15px; }
+  .bcard .row { color: var(--dim); margin-top: 3px; }
+  .bcard .big { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .bar { height: 6px; background: var(--card2); border-radius: 3px;
+         overflow: hidden; position: relative; width: 110px; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  .bar .tick { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--dim); }
+  .p-blue { color: var(--accent); }   .p-blue i { background: var(--accent); }
+  .p-green { color: var(--good); }    .p-green i { background: var(--good); }
+  .p-yellow { color: var(--gold); }   .p-yellow i { background: var(--gold); }
+  .p-orange { color: var(--orange); } .p-orange i { background: var(--orange); }
+  .p-red { color: var(--bad); }       .p-red i { background: var(--bad); }
+  .twrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; white-space: nowrap; }
+  th, td { text-align: right; padding: 7px 9px; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--dim); cursor: pointer; user-select: none; position: sticky; top: 0; background: var(--card); }
+  tr:last-child td { border-bottom: none; }
+  td { font-variant-numeric: tabular-nums; }
+  .hot { color: var(--gold); }
+  .dim { color: var(--dim); font-size: 11.5px; font-weight: 400; }
+  select {
+    background: var(--card); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 8px; padding: 4px 6px; font-size: 13px; margin-bottom: 8px;
+  }
+  .note { color: var(--dim); font-size: 12.5px; margin-top: 6px; }
+  .empty { color: var(--dim); padding: 20px; text-align: center; }
+</style>
+</head>
+<body>
+<h1>Nugget ops</h1>
+<div class="sub">Limits, channel economics, campaign yields, sources, and knobs. Marked knobs are
+editable here with the ops write key; everything else is SQL-editor only.</div>
+
+<h2>Limits &amp; burn</h2>
+<div class="note" style="margin:0 0 8px">
+Each row names the resource being consumed and the consumer.
+<b>Projected at reset</b> = share of quota used ÷ share of the period elapsed —
+a straight-line projection of where the period ends.
+<span class="p-blue">blue</span> &lt;50% ·
+<span class="p-green">green</span> 50–75% ·
+<span class="p-yellow">yellow</span> 75–90% ·
+<span class="p-orange">orange</span> 90–100% ·
+<span class="p-red">red</span> ≥100%.
+Types: <b>expires</b> = prepaid allotment, unused value is lost at reset;
+<b>ceiling</b> = do-not-exceed cap; <b>metered</b> = pay-per-use judged against a
+chosen budget — nothing blocks at it. The tick on each bar marks where
+"exactly on pace" would be right now.</div>
+<div class="twrap"><table id="limits"><tr><td class="empty">Loading…</td></tr></table></div>
+<div id="killed" class="cards" style="margin-top:8px"></div>
+
+<h2>Campaign yield by query</h2>
+<div class="twrap"><table id="yield"></table></div>
+<div class="note">Prime indicators first (nug/item · nug/$ · nug/kw — cost is every call
+cost of the videos that query found), then the funnel:
+found → screened out / promoted → processed → nuggets → your ratings.
+A query with finds but no ≥4★ after a couple of weeks is a candidate for retirement
+(<code>update yt_campaign_queries set active = false …</code>).</div>
+
+<h2>Sources — priority &amp; economics</h2>
+<div class="twrap"><table id="sources"></table></div>
+<div class="note">One integer per method of acquisition, lower = processed sooner,
+ties allowed; the queue tie-break is newest-published. Manual adds jump to
+priority 0 for the first 3 per hour. Priority is editable here with the ops
+write key. Sources are subscribed or discovered — provenance, not quality;
+nuggets are rated on merit.</div>
+
+<h2>Category tags — coverage &amp; TTL</h2>
+<div class="twrap"><table id="tags"></table></div>
+<div class="note">Nuggets carry ordered category tags, primary first (since
+2026-08-06; older nuggets show their legacy type instead). <b>Primary</b> is
+the tag in position one — the only tag counted where totals must equal sums,
+like cost attribution. <b>Coverage</b> = share of categorized nuggets carrying
+the tag in any position; because tags are multiple, coverage sums exceed 100%
+by design. A tag above ~60% coverage presumptively isn't earning its keep —
+<i>unless</i> it stratifies (rare on most sources, dominant on a few; filter
+on it in the viewer and see whether it separates channels). Human call, not a
+rule. <b>TTL</b> is the tag's soft-expiry window: unrated nuggets outlive the
+longest TTL among their tags and drop out of "open" (rows kept — the viewer's
+Expired chip lists them; rating a nugget exempts it for good). TTL edits are
+SQL-editor only: <code>update yt_categories set ttl_days = … where key = '…';</code></div>
+
+<h2>Channel economics — lifetime</h2>
+<div class="twrap"><table id="totals"></table></div>
+<div class="note">Columns: identity, then prime value rates, then quality scores, then volume.
+Cost = Claude tokens + prorated Supadata credits, from the call log.
+Nugget counts are surviving nuggets (1★ rows are purged). Disabled channels are
+campaign discoveries or manual-add hosts, not part of the subscribed poll list.
+Value rates are per-dollar — nug/$ and 5★/$ — because substack costs run
+magnitudes below video costs and "nuggets per dollar" compares cleanly where
+"$0.00003 per nugget" reads as noise; bigger is better, like every density
+column. <b>nug/mo</b> = surviving nuggets ÷ months since the channel's first
+processed item (denominator floored at 1 month, like views/day's 1-day floor).
+<b>taste</b> = the AI's guess at your interest (0–100); <b>mentor</b> = the AI's
+outside-expert value-per-time score (0–100); pk/med/avg = peak, median, average
+over surviving nuggets. <b>hype</b> (−5…+5) is per scored video, including
+zero-nugget ones. Substack transcript/minutes columns are legitimately blank;
+nug/item and <b>nug/kw</b> (nuggets per 1,000 words of transcript or post) are
+the density metrics both sources share — nug/kw counts only items processed
+since word counting began (2026-07-30), on both sides of the ratio. Channels
+processed before 2026-07-25 predate cost logging and show $0 (per-dollar rates
+blank). Tap a column header to sort.</div>
+
+<h2>Channel economics — by month</h2>
+<select id="monthSel"></select>
+<div class="twrap"><table id="monthly"></table></div>
+
+<h2>Pipeline flow parameters</h2>
+<div class="twrap"><table id="knobs"></table></div>
+<div class="note">Every tunable number the pipeline runs on — batch pace,
+retry behavior, budgets, caps; the next run picks changes up, no redeploy.
+Rows marked ✎ are editable here: click the value, enter the ops write key once
+per session (kept in this tab only, never stored). Bounds are enforced
+server-side — the browser is never trusted. Everything else stays SQL-editor
+only, using the key shown under each name:
+<code>update yt_params set value = '…' where key = '…';</code>
+Every change is audited.</div>
+
+<script>
+const BASE = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-review";
+// Key from ?key= once, then this device's localStorage (cr_review_key — shared
+// with the viewer and capture surfaces) so the installed N-ops app (RV-031)
+// opens without a key in its start_url; the public repo forbids one there.
+const urlKey = new URLSearchParams(location.search).get("key");
+if (urlKey) localStorage.setItem("cr_review_key", urlKey);
+const KEY = urlKey || localStorage.getItem("cr_review_key");
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("../sw.js").catch(() => {});
+let ops = null;
+let sortKey = "nug_per_usd", sortDir = -1;
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g,
+    (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+const fmt = (v, d) => v == null ? "—" : Number(v).toFixed(d);
+
+// Column doctrine (Mike, 2026-08-01): human-readable ID first, then the few
+// categorizations that matter, then metrics ordered by insight value —
+// prime rates, quality scores, volume — with mostly-zero columns far right.
+const TOTAL_COLS = [
+  ["label", "channel", null],
+  ["source", "source", null],
+  ["nug_per_usd", "nug/$", 0],
+  ["nug_per_item", "nug/item", 2],
+  ["nug_per_kword", "nug/kw", 2],
+  ["nug_per_month", "nug/mo", 1],
+  ["taste_peak", "taste pk", 0],
+  ["taste_med", "taste med", 0],
+  ["taste_avg", "taste avg", 0],
+  ["mentor_peak", "mentor pk", 0],
+  ["mentor_med", "mentor med", 0],
+  ["mentor_avg", "mentor avg", 0],
+  ["hype_med", "hype med", 1],
+  ["hype_avg", "hype avg", 1],
+  ["nuggets", "nuggets", 0],
+  ["rated_ge4", "≥4★", 0],
+  ["cost_usd", "$", 2],
+  ["videos_processed", "items", 0],
+  ["transcript_minutes", "minutes", 0],
+  ["five_star", "5★", 0],
+  ["five_star_per_usd", "5★/$", 1],
+  ["supadata_calls", "transcripts", 0],
+  ["nuggets_per_transcript_minute", "nug/min", 3],
+];
+// Monthly rows carry no quality stats or first_processed_at — same doctrine,
+// shorter list.
+const MONTH_COLS = TOTAL_COLS.filter(([k]) =>
+  !["label", "nug_per_month", "taste_peak", "taste_med", "taste_avg",
+    "mentor_peak", "mentor_med", "mentor_avg", "hype_med", "hype_avg"].includes(k));
+
+// Value rates are INVERTED to per-dollar (Mike's call): $/nugget in the
+// 0.001-0.00001 range reads as noise, while "381 nuggets per dollar" is a
+// number a human can compare. Computed from raw cost, not the server's
+// 4-decimal rounding. Bigger = better, matching every other density metric.
+function sourceHtml(v) {
+  return v === "substack"
+    ? '<span style="color:var(--accent)">substack</span>'
+    : '<span style="color:var(--dim)">' + esc(v || "") + "</span>";
+}
+
+function metric(r, k) {
+  if (k === "nug_per_usd") return r.cost_usd > 0 ? r.nuggets / r.cost_usd : null;
+  if (k === "five_star_per_usd") return r.cost_usd > 0 ? r.five_star / r.cost_usd : null;
+  if (k === "nug_per_item") return r.videos_processed > 0 ? r.nuggets / r.videos_processed : null;
+  // Word density is self-consistent: worded nuggets over worded kilowords,
+  // so items processed before word counting existed pollute neither side.
+  if (k === "nug_per_kword") return r.kwords > 0 ? r.worded_nuggets / r.kwords : null;
+  if (k === "nug_per_month") {
+    if (!r.first_processed_at) return null;
+    const months = (Date.now() - new Date(r.first_processed_at).getTime()) / (86400000 * 30.44);
+    return r.nuggets / Math.max(months, 1);
+  }
+  return r[k];
+}
+
+function renderTotals() {
+  const rows = (ops.channel_totals || []).slice().sort((a, b) => {
+    const x = metric(a, sortKey), y = metric(b, sortKey);
+    if (x == null && y == null) return 0;
+    if (x == null) return 1;
+    if (y == null) return -1;
+    return (typeof x === "string" ? x.localeCompare(y) : x - y) * sortDir;
+  });
+  document.getElementById("totals").innerHTML =
+    "<tr>" + TOTAL_COLS.map(([k, label]) =>
+      '<th onclick="sortBy(\'' + k + '\')">' + label + (k === sortKey ? (sortDir < 0 ? " ▾" : " ▴") : "") + "</th>"
+    ).join("") + "</tr>" +
+    rows.map(r => "<tr>" + TOTAL_COLS.map(([k, , d]) => {
+      if (k === "label") {
+        // enabled=false says only "not subscribed" — the channel could host
+        // campaign promotions, manual adds, or both. Per-acquisition economics
+        // live in the Sources table above, where the split is real.
+        return "<td>" + esc(r.label) + (r.enabled === false ? ' <span class="hot">(not subscribed)</span>' : "") + "</td>";
+      }
+      if (k === "source") return "<td>" + sourceHtml(r.source) + "</td>";
+      return "<td>" + (d == null ? esc(r[k]) : fmt(metric(r, k), d)) + "</td>";
+    }).join("") + "</tr>").join("");
+}
+function sortBy(k) {
+  sortDir = k === sortKey ? -sortDir : (k === "label" ? 1 : -1);
+  sortKey = k;
+  renderTotals();
+}
+
+function renderMonthly() {
+  const sel = document.getElementById("monthSel");
+  const rows = (ops.channel_monthly || []).filter(r => !sel.value || r.month === sel.value);
+  document.getElementById("monthly").innerHTML =
+    "<tr><th>channel</th><th>month</th>" + MONTH_COLS.map(([, label]) => "<th>" + label + "</th>").join("") + "</tr>" +
+    (rows.length ? rows.map(r =>
+      "<tr><td>" + esc(r.label) + "</td><td>" + esc(String(r.month).slice(0, 7)) + "</td>" +
+      MONTH_COLS.map(([k, , d]) => k === "source" ? "<td>" + sourceHtml(r.source) + "</td>"
+        : "<td>" + (d == null ? esc(r[k]) : fmt(metric(r, k), d)) + "</td>").join("") + "</tr>"
+    ).join("") : '<tr><td colspan="' + (MONTH_COLS.length + 2) + '" class="empty">No rows.</td></tr>');
+}
+
+// Pace fraction: (used/quota) / elapsed-fraction — the straight-line
+// projection of the share of quota consumed by period end.
+// Five bands (Mike, 2026-08-01): blue <0.5 · green <0.75 · yellow <0.9 ·
+// orange <1.0 · red ≥1.0. Note red ≥1.0 fires for "expires"-type limiters
+// projected to land exactly on target too — accepted for now; the type
+// column says which red is which.
+function paceOf(used, quota, elapsed) {
+  if (!quota || quota <= 0) return null;
+  return (used / quota) / Math.max(elapsed, 0.02);
+}
+function paceClass(r) {
+  return r == null ? "" :
+    r < 0.5 ? "p-blue" : r < 0.75 ? "p-green" : r < 0.9 ? "p-yellow" :
+    r < 1.0 ? "p-orange" : "p-red";
+}
+function paceLabel(r) {
+  return r == null ? "" :
+    r < 0.5 ? "light" : r < 0.75 ? "steady" : r < 0.9 ? "brisk" :
+    r < 1.0 ? "near limit" : "over pace";
+}
+
+function limitRow(l) {
+  const r = paceOf(l.used, l.quota, l.elapsed);
+  const pct = Math.min(100, 100 * l.used / Math.max(l.quota, 1e-9));
+  const proj = r == null ? '<span class="dim">no quota</span>' :
+    '<span class="' + paceClass(r) + '">' + Math.round(r * 100) + "% — " + paceLabel(r) + "</span>";
+  return "<tr><td>" + esc(l.name) +
+    (l.sub ? '<br><span class="dim">' + esc(l.sub) + "</span>" : "") + "</td>" +
+    '<td style="color:var(--dim)">' + esc(l.type) + "</td>" +
+    "<td>" + esc(l.usedText) + "</td><td>" + esc(l.quotaText) + "</td>" +
+    "<td>" + proj + "</td>" +
+    '<td><div class="bar ' + paceClass(r) + '" style="display:inline-block;vertical-align:middle">' +
+      '<i style="width:' + pct + '%"></i>' +
+      '<span class="tick" style="left:' + Math.min(100, 100 * l.elapsed) + '%"></span></div></td>' +
+    '<td style="color:var(--dim)">' + esc(l.resets) + "</td></tr>";
+}
+
+function render() {
+  const m = ops.month;
+  const pmap = new Map((ops.params || []).map(p => [p.key, p.value]));
+  const budgets = ops.campaign_budget || [];
+  const rows = [];
+  const now = Date.now();
+  let cycFrac = 0.5;
+  if (m) {
+    const cs = new Date(m.supadata_cycle_start).getTime();
+    const ce = new Date(m.supadata_cycle_end).getTime();
+    cycFrac = Math.min(1, Math.max(0, (now - cs) / Math.max(1, ce - cs)));
+    const cycReset = String(m.supadata_cycle_end).slice(0, 10);
+    rows.push({
+      name: "Transcript pulls — whole pipeline", type: "expires",
+      sub: "Supadata credits, $" + fmt(m.supadata_fee, 0) + "/cycle flat — unused credits expire",
+      used: m.cycle_supadata_calls, usedText: String(m.cycle_supadata_calls),
+      quota: m.supadata_allotment, quotaText: String(m.supadata_allotment),
+      elapsed: cycFrac, resets: cycReset,
+    });
+    if (m.daily_cap != null) {
+      const dayFrac = (now % 86400000) / 86400000;
+      rows.push({
+        name: "Transcript pulls — today's cap", type: "ceiling",
+        sub: "burn multiplier × credits remaining ÷ days remaining, recomputed live — at the cap, YouTube pauses until tomorrow; substack keeps flowing",
+        used: Number(m.credits_used_today) || 0, usedText: String(m.credits_used_today),
+        quota: Number(m.daily_cap) || 1, quotaText: String(m.daily_cap),
+        elapsed: dayFrac, resets: "midnight UTC",
+      });
+    }
+    // Subscriptions = the subscribed stream's share: whole pipeline minus what
+    // campaigns used, against the allotment minus campaign reservations.
+    const campUsed = budgets.reduce((s, b) => s + (b.supadata_used_cycle || 0), 0);
+    const campCap = budgets.reduce((s, b) => s + (b.supadata_cap_per_cycle || 0), 0);
+    rows.push({
+      name: "Transcript pulls — subscribed channels", type: "expires",
+      sub: "the credits left for subscribed channels after campaign reservations",
+      used: m.cycle_supadata_calls - campUsed,
+      usedText: String(m.cycle_supadata_calls - campUsed),
+      quota: Math.max(1, m.supadata_allotment - campCap),
+      quotaText: String(Math.max(0, m.supadata_allotment - campCap)),
+      elapsed: cycFrac, resets: cycReset,
+    });
+    const budgetUsd = Number(pmap.get("claude_budget_usd_month")) || 30;
+    const d = new Date();
+    const monthFrac = Math.min(1, d.getDate() /
+      new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate());
+    // Claude-only figure (mtd_claude_usd): the budget it's measured against is
+    // Claude-specific, so the number must be too. mtd_cost_usd blends in the
+    // amortized Supadata fee and belongs to the whole-pipeline framing.
+    const claudeUsd = m.mtd_claude_usd ?? m.mtd_cost_usd;
+    rows.push({
+      name: "AI reading & scoring — whole pipeline", type: "metered",
+      sub: "Claude API dollars this month vs the soft budget (✎ below) — nothing blocks at the cap",
+      used: Number(claudeUsd) || 0, usedText: "$" + fmt(claudeUsd, 2),
+      quota: budgetUsd, quotaText: "$" + budgetUsd,
+      elapsed: monthFrac, resets: "month end",
+    });
+  }
+  budgets.forEach(b => {
+    rows.push({
+      name: 'Transcript pulls — campaign "' + b.name + '"', type: "ceiling",
+      sub: b.status + " · tier " + b.tier + " · " + b.videos_pending + " pending · " +
+        b.videos_processed + " processed · promotes ≤" + b.daily_video_cap + "/day — its slice of the cycle credits above",
+      used: b.supadata_used_cycle, usedText: String(b.supadata_used_cycle),
+      quota: b.supadata_cap_per_cycle, quotaText: String(b.supadata_cap_per_cycle),
+      elapsed: cycFrac, resets: "with cycle",
+    });
+  });
+  document.getElementById("limits").innerHTML = rows.length
+    ? "<tr><th>limiter</th><th>type</th><th>used</th><th>quota</th>" +
+      "<th>projected at reset</th><th></th><th>resets</th></tr>" +
+      rows.map(limitRow).join("")
+    : '<tr><td class="empty">No data.</td></tr>';
+
+  document.getElementById("killed").innerHTML = ops.killed_runs_7d != null
+    ? '<div class="bcard ' + (ops.killed_runs_7d > 0 ? "p-red" : "p-green") +
+      '"><b>Processor runs killed — 7 days</b>' +
+      '<div class="big">' + ops.killed_runs_7d + "</div>" +
+      '<div class="row">runs that started but never finished (wall-clock kill leaves no ' +
+      "other trace). Should be 0 at batch_size 1; if it isn't, a single item is " +
+      "exceeding the ~150 s edge budget.</div></div>"
+    : "";
+
+  const y = ops.campaign_yield || [];
+  document.getElementById("yield").innerHTML =
+    "<tr><th>query</th><th>nug/item</th><th>nug/$</th><th>nug/kw</th>" +
+    "<th>found</th><th>screened out</th><th>promoted</th><th>processed</th>" +
+    "<th>nuggets</th><th>≥4★</th><th>5★</th></tr>" +
+    (y.length ? y.map(r =>
+      "<tr><td>" + esc(r.query) + (r.active ? "" : ' <span class="hot">(retired)</span>') + "</td>" +
+      "<td>" + fmt(r.processed > 0 ? r.nuggets / r.processed : null, 2) + "</td>" +
+      "<td>" + fmt(r.cost_usd > 0 ? r.nuggets / r.cost_usd : null, 0) + "</td>" +
+      "<td>" + fmt(r.kwords > 0 ? r.worded_nuggets / r.kwords : null, 2) + "</td><td>" +
+      [r.found, r.screened_out, r.promoted, r.processed, r.nuggets, r.rated_ge4, r.five_star].join("</td><td>") +
+      "</td></tr>").join("") : '<tr><td colspan="11" class="empty">No campaign data yet.</td></tr>');
+
+  renderTotals();
+  renderSources();
+  renderTags();
+  renderKnobs();
+
+  const months = [...new Set((ops.channel_monthly || []).map(r => r.month))].sort().reverse();
+  renderMonthSel(months);
+}
+
+function renderSources() {
+  const econ = new Map((ops.source_econ || []).map(s => [s.key, s]));
+  const rows = (ops.sources || []).map(s => {
+    const e = econ.get(s.key) || {};
+    return "<tr" + (s.enabled ? "" : ' style="opacity:.5"') + ">" +
+      '<td><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:' +
+        esc(s.color) + ';margin-right:6px"></span>' + esc(s.key) +
+        (s.enabled ? "" : ' <span class="hot">(off)</span>') + "</td>" +
+      "<td>" + esc(s.acquisition) + "</td><td>" + esc(s.platform) + "</td>" +
+      '<td class="editable" style="color:var(--accent);cursor:pointer" title="click to edit (ops write key)" ' +
+        "onclick=\"editLever('yt_sources','" + esc(s.key) + "'," + s.priority + ")\">" +
+        s.priority + " ✎</td>" +
+      "<td>" + fmt(e.cost_usd > 0 ? (e.nuggets ?? 0) / e.cost_usd : null, 0) + "</td>" +
+      "<td>" + fmt(e.videos > 0 ? (e.nuggets ?? 0) / e.videos : null, 2) + "</td>" +
+      "<td>" + (e.videos ?? 0) + "</td><td>" + (e.pending ?? 0) + "</td>" +
+      "<td>" + fmt(e.cost_usd, 2) + "</td><td>" + (e.nuggets ?? 0) + "</td>" +
+      "<td>" + (e.rated_ge4 ?? 0) + "</td><td>" + (e.five_star ?? 0) + "</td></tr>";
+  });
+  document.getElementById("sources").innerHTML =
+    "<tr><th>source</th><th>acquisition</th><th>platform</th><th>priority</th>" +
+    "<th>nug/$</th><th>nug/item</th>" +
+    "<th>items</th><th>pending</th><th>$</th><th>nuggets</th><th>≥4★</th><th>5★</th></tr>" +
+    (rows.length ? rows.join("")
+      : '<tr><td colspan="12" class="empty">yt_sources not populated — run the 20260730 intake migration.</td></tr>');
+}
+
+// Tag coverage: the fluff detector. >60% coverage gets flagged; the
+// stratification exception (see the note above the table) stays a human
+// judgment, so the flag is a color, never a filter.
+function renderTags() {
+  const t = ops.tag_coverage || [];
+  document.getElementById("tags").innerHTML =
+    "<tr><th>tag</th><th>TTL (days)</th><th>nuggets</th><th>primary</th><th>coverage</th></tr>" +
+    (t.length ? t.map(r =>
+      "<tr><td>" + esc(r.tag) + "</td>" +
+      "<td>" + r.ttl_days + "</td>" +
+      "<td>" + (r.nuggets ?? 0) + "</td>" +
+      "<td>" + (r.primary_nuggets ?? 0) + "</td>" +
+      '<td class="' + (Number(r.coverage_pct) > 60 ? "p-yellow" : "") + '">' +
+        fmt(r.coverage_pct, 1) + "%</td></tr>").join("")
+      : '<tr><td colspan="5" class="empty">No categorized nuggets yet — the tag table fills as the processor runs post-migration.</td></tr>');
+}
+
+// Plain-language names for the knobs (the raw key stays visible underneath —
+// it's what SQL edits need). Fallback: underscores become spaces.
+const KNOB_NAMES = {
+  batch_size: "Items per processor run",
+  batch_pacing_s: "Pause between items (s)",
+  transcript_retries: "Transcript retry attempts",
+  transcript_backoff_s: "Transcript retry waits (s)",
+  claude_retries: "AI retry attempts",
+  claude_backoff_s: "AI retry waits (s)",
+  transient_max_strikes: "Failure strikes before giving up",
+  extract_max_tokens: "AI response cap (tokens)",
+  extract_max_tokens_retry: "AI response cap on retry (tokens)",
+  purge_grace_hours: "1★ undo window (hours)",
+  claude_budget_usd_month: "AI monthly budget ($)",
+  poll_pacing_ms: "Pause between poller calls (ms)",
+  burn_multiplier: "Daily cap burn multiplier",
+  wall_clock_budget_ms: "Processor time budget (ms)",
+  transcript_timeout_ms: "Transcript timeout (ms)",
+  claude_timeout_ms: "AI call timeout (ms)",
+  manual_playlist_id: "Inbox playlist",
+  queue_playlist_id: "Queue playlist",
+  queue_sync_cap: "Playlist syncs per run",
+  substack_links_per_post: "Links kept per post",
+};
+
+function renderKnobs() {
+  document.getElementById("knobs").innerHTML =
+    "<tr><th>parameter</th><th>value</th><th>bounds</th><th>what it does</th></tr>" +
+    ((ops.params || []).length ? (ops.params || []).map(p => {
+      const bounds = p.editable
+        ? fmt(p.min_value, 0) + " – " + fmt(p.max_value, 0) : "—";
+      const val = p.editable
+        ? '<td class="editable" style="color:var(--accent);cursor:pointer" title="click to edit (ops write key)" ' +
+          "onclick=\"editLever('yt_params','" + esc(p.key) + "','" + esc(p.value) + "')\">" +
+          esc(p.value) + " ✎</td>"
+        : '<td style="color:var(--dim)">' + esc(p.value) + "</td>";
+      const name = KNOB_NAMES[p.key] || p.key.replace(/_/g, " ");
+      return "<tr><td>" + esc(name) + '<br><span class="dim">' + esc(p.key) + "</span></td>" + val +
+        "<td>" + bounds + "</td><td>" + esc(p.description) + "</td></tr>";
+    }).join("")
+      : '<tr><td colspan="4" class="empty">yt_params not populated yet — run the 20260729 migration.</td></tr>');
+}
+
+// Lever writes: separate stronger key, typed once per session on a computer,
+// held in this tab's sessionStorage only. Bounds enforced server-side.
+async function editLever(table, key, current) {
+  const next = prompt("New value for " + key + " (current: " + current + ")", current);
+  if (next == null || String(next).trim() === "" || String(next) === String(current)) return;
+  let opsKey = "";
+  try { opsKey = sessionStorage.getItem("ops_write_key") || ""; } catch (e) {}
+  if (!opsKey) {
+    opsKey = prompt("Ops write key (kept in this tab for this session only):") || "";
+    if (!opsKey) return;
+    try { sessionStorage.setItem("ops_write_key", opsKey); } catch (e) {}
+  }
+  try {
+    const res = await fetch(BASE + "/param?key=" + encodeURIComponent(KEY), {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-ops-key": opsKey },
+      body: JSON.stringify({ table, key, value: String(next).trim() }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (res.status === 401) { try { sessionStorage.removeItem("ops_write_key"); } catch (e) {} }
+      alert("Rejected: " + (data.error || res.status));
+      return;
+    }
+    load();
+  } catch (e) { alert("Network error: " + e); }
+}
+
+function renderMonthSel(months) {
+  const sel = document.getElementById("monthSel");
+  sel.innerHTML = '<option value="">all months</option>' + months.map(m =>
+    '<option value="' + esc(m) + '">' + esc(String(m).slice(0, 7)) + "</option>").join("");
+  if (months.length) sel.value = months[0];
+  sel.onchange = renderMonthly;
+  renderMonthly();
+}
+
+async function load() {
+  if (!KEY) {
+    document.body.innerHTML = '<div class="empty">Missing ?key= — open from your bookmark (same key as the viewer).</div>';
+    return;
+  }
+  let res;
+  try {
+    res = await fetch(BASE + "/ops?key=" + encodeURIComponent(KEY));
+  } catch (e) {
+    document.getElementById("limits").innerHTML = '<tr><td class="empty">Could not reach the API.</td></tr>';
+    return;
+  }
+  if (!res.ok) {
+    document.getElementById("limits").innerHTML = '<tr><td class="empty">API error ' + res.status + "</td></tr>";
+    return;
+  }
+  ops = await res.json();
+  render();
+}
+load();
+</script>
+</body>
+</html>
