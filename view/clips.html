@@ -230,7 +230,8 @@ async function load() {
     return;
   }
   let res;
-  try { res = await fetch(BASE + "/data?key=" + encodeURIComponent(KEY)); }
+  // queued=1: the server narrows the index to queued nuggets (2026-08-23).
+  try { res = await fetch(BASE + "/data?key=" + encodeURIComponent(KEY) + "&queued=1"); }
   catch (e) { document.getElementById("list").innerHTML = '<div class="empty">Could not reach the nugget API.</div>'; return; }
   if (!res.ok) {
     document.getElementById("list").innerHTML = '<div class="empty">API error ' + res.status + (res.status === 401 ? " — key rejected." : "") + "</div>";

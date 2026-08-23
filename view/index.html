@@ -48,6 +48,9 @@
   .ctl .user-set { border-color: var(--mint); color: var(--mint); }
   .ctl .side-effect { border-color: var(--yellow); color: var(--yellow); }
   .ctl .na { opacity: .45; }
+  .ctl select:disabled, .ctl button:disabled { opacity: .4; }
+  /* The Apply card: the one load-triggering control (tier 2). */
+  .ctl button.primary { background: var(--accent); border-color: var(--accent); color: #08131f; font-weight: 600; }
   .ctl button.util { border-radius: 8px; padding: 5px 10px; font-size: 13px; }
   .chips .gap { flex: none; border-left: 1px solid var(--line); height: 26px; margin: 0 2px; }
   #count { font-size: 12px; color: var(--faint); margin-top: 5px; }
@@ -176,6 +179,11 @@ const DEFAULTS = { scope: "", src: "", cat: "", domain: "", age: "", ratef: "",
   group: "", zoom: 1 };
 let all = [], slope = 0, intercept = 0;
 let byId = new Map(); // id -> nugget (bodies arrive by id)
+// Tiered load (Mike, 2026-08-23): facets first (tier 1), the chosen
+// Scope+Source subset on Apply (tier 2), everything else client-side.
+let facets = null;      // /facets payload
+let loadedSel = null;   // {scope, src} of the subset currently in `all`
+let loading = false;
 let catTtls = {}, defaultTtl = 180, catList = [];
 let manualEmpty = [];
 let channelHype = new Map();
@@ -315,21 +323,14 @@ function scopeMatch(n, val) {
 // server call. Source ignores the scope filter's downstream (it is rebuilt
 // from scope anyway); Scope ignores Source (Source depends on Scope).
 function facetCounts() {
-  const F = { scope: new Map(), source: new Map(), cat: new Map(), domain: new Map(), age: new Map(), rating: new Map() };
+  // Scope and Source counts are tier-1 (server facets); these are the
+  // within-subset counts for the client-side filters.
+  const F = { cat: new Map(), domain: new Map(), age: new Map(), rating: new Map() };
   const bump = (m, k) => m.set(k, (m.get(k) || 0) + 1);
   for (const n of all) {
     const j = judgmentPass(n);
     const jx = (state.expired || !isExpired(n)) && (!state.hideQ || !queued(n)); // judgment minus the rating dropdown
     const sc = scopePass(n), sr = sourcePass(n), ca = catPass(n), dm = domPass(n), ag = agePass(n);
-    if (j && ca && dm && ag) {
-      for (const [val] of SCOPES) if (scopeMatch(n, val)) bump(F.scope, val);
-    }
-    if (j && sc && ca && dm && ag) {
-      bump(F.source, "");
-      if (state.scope === "campaign") {
-        if (n.campaignId != null) { bump(F.source, "c:" + n.campaignId); if (n.campaignQuery) bump(F.source, "q:" + n.campaignId + "|" + n.campaignQuery); }
-      } else if (n.channelLabel) bump(F.source, n.channelLabel);
-    }
     if (j && sc && sr && dm && ag) { bump(F.cat, ""); for (const c of categoriesOf(n)) bump(F.cat, c); }
     if (j && sc && sr && ca && ag) { bump(F.domain, ""); if (n.domain) bump(F.domain, n.domain); }
     if (j && sc && sr && ca && dm) { bump(F.age, ""); const d = ageDays(n); for (const [val] of AGES) if (val && d <= Number(val)) bump(F.age, val); }
@@ -399,46 +400,54 @@ function flatVals(defs) { return defs.flatMap(d => d.group != null ? d.items.map
 function fillFor(prop) {
   return String(state[prop] ?? "") !== String(DEFAULTS[prop] ?? "") ? "user-set" : "";
 }
+// Source vocabulary comes from the tier-1 FACETS (server counts of nuggets
+// per channel / campaign / phrase within the scope), not from the loaded
+// subset — Scope and Source are the load-determining controls (2026-08-23).
+// Values: ch:<channel_id>; under Scope=Campaign c:<campaign_id> or
+// q:<campaign_id>|<phrase> (one optgroup per campaign, "all of" first).
 function sourceDefs() {
-  const pool = all.filter(n => judgmentPass(n) && scopePass(n));
+  if (!facets) return [];
+  const fmt = (n) => " (" + Number(n || 0).toLocaleString() + ")";
   if (state.scope === "campaign") {
-    // Under Scope=Campaign the "particular source" of a discovered video is
-    // the campaign and the search phrase that found it, not the channel
-    // (Mike, 2026-08-23). One optgroup per campaign: "all of <campaign>"
-    // first, then its queries present in the pool. Values: c:<id>, q:<id>|<phrase>.
-    const byCamp = new Map();
-    for (const n of pool) {
-      if (n.campaignId == null) continue;
-      const key = n.campaignId;
-      if (!byCamp.has(key)) byCamp.set(key, { name: n.campaignName || key, queries: new Set() });
-      if (n.campaignQuery) byCamp.get(key).queries.add(n.campaignQuery);
-    }
-    return [...byCamp.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name)).map(([id, c]) => ({
+    return (facets.campaigns || []).map(c => ({
       group: c.name,
-      items: [["c:" + id, "all of " + esc(c.name)]].concat(
-        [...c.queries].sort((a, b) => a.localeCompare(b)).map(q => ["q:" + id + "|" + q, "“" + esc(q) + "”"])),
+      items: [["c:" + c.id, "all of " + esc(c.name) + fmt(c.n)]].concat(
+        (c.queries || []).map(q => ["q:" + c.id + "|" + q.q, "“" + esc(q.q) + "”" + fmt(q.n)])),
     }));
   }
-  // Vocabulary = sources present in available ∩ selected scope (alphabetical
-  // — a lookup aid inside a long list), each with the channel's running hype
-  // average, the weeding signal.
-  const opts = [...new Set(pool.map(n => n.channelLabel).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-  return opts.map(vv => {
-    const h = channelHype.get(vv);
-    return [vv, esc(h == null ? vv : vv + " (" + (h > 0 ? "+" : "") + Number(h).toFixed(1) + ")")];
+  const list = (facets.channels || {})[state.scope || "all"] || [];
+  return list.map(ch => {
+    const h = (facets.hype || {})[ch.id];
+    const hy = h == null ? "" : " (" + (h > 0 ? "+" : "") + Number(h).toFixed(1) + ")";
+    return ["ch:" + ch.id, esc(ch.label) + hy + fmt(ch.n)];
   });
 }
-// Source match: channel label, or under Scope=Campaign a campaign (c:<id>)
-// or one campaign query (q:<id>|<phrase>).
+// Source match over the loaded subset: channel id, campaign, or campaign phrase.
 function sourcePass(n) {
   const s = state.src;
   if (!s) return true;
+  if (s.startsWith("ch:")) return n.channelId === s.slice(3);
   if (s.startsWith("c:")) return n.campaignId === s.slice(2);
   if (s.startsWith("q:")) {
     const bar = s.indexOf("|");
     return n.campaignId === s.slice(2, bar) && n.campaignQuery === s.slice(bar + 1);
   }
-  return n.channelLabel === s;
+  return false;
+}
+// Tier-1 count for the current Scope+Source choice (what Apply will load).
+function selectionCount() {
+  if (!facets) return null;
+  const s = state.src;
+  if (!s) return facets.scopes ? facets.scopes[state.scope || "all"] : null;
+  if (s.startsWith("ch:")) { const ch = ((facets.channels || {})[state.scope || "all"] || []).find(c => "ch:" + c.id === s); return ch ? ch.n : null; }
+  const camp = (facets.campaigns || []).find(c => s === "c:" + c.id || s.startsWith("q:" + c.id + "|"));
+  if (!camp) return null;
+  if (s.startsWith("c:")) return camp.n;
+  const q = (camp.queries || []).find(x => "q:" + camp.id + "|" + x.q === s);
+  return q ? q.n : null;
+}
+function applyPending() {
+  return !loadedSel || loadedSel.scope !== (state.scope || "") || loadedSel.src !== (state.src || "");
 }
 
 function renderControls() {
@@ -450,12 +459,24 @@ function renderControls() {
   const srcFill = srcDefs.length === 0 ? "na" : state.srcOrigin === "side_effect" ? "side-effect" : fillFor("src");
   const domains = [...new Set(all.map(n => n.domain).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const F = facetCounts();
+  const fmtN = (n) => n == null ? "" : " (" + Number(n).toLocaleString() + ")";
+  const scopeDefs = SCOPES.map(([v, l]) => [v, l + fmtN(facets && facets.scopes ? facets.scopes[v || "all"] : null)]);
+  const srcAllN = facets && facets.scopes ? facets.scopes[state.scope || "all"] : null;
+  const pending = applyPending();
+  // The Apply card (Mike, 2026-08-23): after a Scope or Source change — and
+  // at open — it stands in for Category/Domain/Age until the subset loads,
+  // making the flow explicit: choose Scope (+ Source) → Apply → then filter.
+  const applyN = selectionCount();
+  const applyHtml = '<span class="ctl"><label for="apply">Load</label>' +
+    '<button id="apply" class="primary" title="load this scope and source">' +
+    (loading ? "loading…" : "Apply" + (applyN != null ? " — " + Number(applyN).toLocaleString() + (applyN === 1 ? " nugget" : " nuggets") : "")) + "</button></span>";
   document.getElementById("row1").innerHTML =
-    selectHtml("cScope", "Scope", withCount(SCOPES, F.scope), state.scope, fillFor("scope")) +
-    selectHtml("cSrc", "Source", withCount([["","All"]].concat(srcDefs), F.source), state.src, srcFill) +
-    selectHtml("cCat", "Category", withCount([["","All"]].concat(catList.map(c => [c, esc(c)])), F.cat), state.cat, fillFor("cat")) +
-    selectHtml("cDomain", "Domain", withCount([["","All"]].concat(domains.map(d => [d, esc(d)])), F.domain), state.domain, fillFor("domain")) +
-    selectHtml("cAge", "Age", withCount(AGES, F.age), state.age, fillFor("age"));
+    selectHtml("cScope", "Scope", scopeDefs, state.scope, fillFor("scope")) +
+    selectHtml("cSrc", "Source", [["", "All" + fmtN(srcAllN)]].concat(srcDefs), state.src, srcFill) +
+    (pending ? applyHtml :
+      selectHtml("cCat", "Category", withCount([["","All"]].concat(catList.map(c => [c, esc(c)])), F.cat), state.cat, fillFor("cat")) +
+      selectHtml("cDomain", "Domain", withCount([["","All"]].concat(domains.map(d => [d, esc(d)])), F.domain), state.domain, fillFor("domain")) +
+      selectHtml("cAge", "Age", withCount(AGES, F.age), state.age, fillFor("age")));
   // Row 2 — order: Group, Sort, Dir (cause left of effect; Group writes
   // Sort's default, so its yellow side-effect appears downstream).
   const sortFill = state.sortOrigin === "side_effect" ? "side-effect" : fillFor("sort");
@@ -479,9 +500,18 @@ function renderControls() {
 
   bind("cScope", "scope");
   bind("cSrc", "src", () => { state.srcOrigin = "user"; });
-  bind("cCat", "cat");
-  bind("cDomain", "domain");
-  bind("cAge", "age");
+  if (pending) {
+    document.getElementById("apply").onclick = () => { if (!loading) loadData(); };
+  } else {
+    bind("cCat", "cat");
+    bind("cDomain", "domain");
+    bind("cAge", "age");
+  }
+  // Rows 2-3 are inert until a subset is loaded (no index to order or judge).
+  for (const id of ["cGroup", "cSort", "cDir", "cRate", "cExp", "zoomIn", "zoomOut", "hideQ"]) {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !loadedSel;
+  }
   bind("cGroup", "group", () => {
     // Group=Video's default sort is My_rating (CONFIRMED 2026-08-20) — a
     // declared side-effect, yellow until the user touches Sort (P-015).
@@ -507,9 +537,18 @@ function touched() { pinned.clear(); toasts.clear(); paintLimit = WINDOW; save()
 
 function render() {
   renderControls();
+  if (!loadedSel) {
+    document.getElementById("count").textContent = facets
+      ? "choose Scope and Source, then tap Apply"
+      : "loading facets…";
+    document.getElementById("list").innerHTML =
+      '<div class="empty">' + (facets ? "Choose Scope and Source above, then tap Apply to load that set." : "Loading…") + "</div>";
+    return;
+  }
   const v = visible();
   const avail = all.filter(judgmentPass).length;
   document.getElementById("count").textContent =
+    (applyPending() ? "selection changed — tap Apply to load · showing " + (SCOPES.find(s => s[0] === loadedSel.scope) || ["", "All"])[1] + " · " : "") +
     v.length + " listed / " + avail + " available" +
     (state.sort === "broccoli" ? " — Broccoli: the coach's score above what your appeal predicts" : "") +
     " · edge stripe = " + (stripeDim() === "appeal" ? "appeal" : "coach") + " score (green 75+, gold 85+)";
@@ -845,25 +884,50 @@ function zoomStep(dir) {
   save(); applyZoom();
 }
 
+// Tier 1: facets only — the header paints at once; nothing else loads.
 async function load() {
   if (!KEY) {
     document.getElementById("list").innerHTML =
       '<div class="empty">Missing ?key= in the URL — open this page from your bookmark once; this device remembers it afterwards.</div>';
     return;
   }
+  // Old saved Source values (channel labels) predate the ch:<id> encoding.
+  if (state.src && !/^(ch|c|q):/.test(state.src)) state.src = "";
+  applyZoom();
+  render();
   let res;
-  try {
-    res = await fetch(BASE + "/data?key=" + encodeURIComponent(KEY));
-  } catch (e) {
-    document.getElementById("list").innerHTML = '<div class="empty">Could not reach the nugget API.</div>';
-    return;
-  }
+  try { res = await fetch(BASE + "/facets?key=" + encodeURIComponent(KEY)); }
+  catch (e) { document.getElementById("list").innerHTML = '<div class="empty">Could not reach the nugget API.</div>'; return; }
   if (!res.ok) {
     document.getElementById("list").innerHTML =
       '<div class="empty">API error ' + res.status + (res.status === 401 ? " — key rejected." : "") + "</div>";
     return;
   }
+  facets = await res.json();
+  render();
+}
+
+// Tier 2: the chosen Scope+Source subset's metadata index (Apply).
+async function loadData() {
+  const sel = { scope: state.scope || "", src: state.src || "" };
+  loading = true; render();
+  let res;
+  try {
+    res = await fetch(BASE + "/data?key=" + encodeURIComponent(KEY) +
+      "&scope=" + encodeURIComponent(sel.scope || "all") + "&source=" + encodeURIComponent(sel.src));
+  } catch (e) {
+    loading = false; render();
+    document.getElementById("list").innerHTML = '<div class="empty">Could not reach the nugget API.</div>';
+    return;
+  }
+  if (!res.ok) {
+    loading = false; render();
+    document.getElementById("list").innerHTML =
+      '<div class="empty">API error ' + res.status + (res.status === 401 ? " — key rejected." : "") + "</div>";
+    return;
+  }
   const data = await res.json();
+  loading = false;
   renderStatus(data.status);
   manualEmpty = data.manual_empty || [];
   catTtls = data.category_ttls || {};
@@ -877,6 +941,7 @@ async function load() {
     return {
       ...n,
       channelLabel: v.yt_channels?.label || v.channel_id || "?",
+      channelId: v.channel_id || null,
       videoTitle: v.title || "",
       plainTitle: v.plain_title || "",
       hypeLevel: v.hype_level ?? null,
@@ -905,7 +970,8 @@ async function load() {
   const seen = new Set(all.flatMap(n => categoriesOf(n)));
   catList = Object.keys(catTtls).filter(c => seen.has(c))
     .concat([...seen].filter(c => !(c in catTtls)).sort());
-  applyZoom();
+  loadedSel = sel;
+  pinned.clear(); toasts.clear(); paintLimit = WINDOW; openId = null; collapsed = new Set();
   render();
 }
 load();
