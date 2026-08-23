@@ -153,17 +153,24 @@ zone; frequency orders the rest; utilities last.
   filter/sort/group change, so acting on a card never yanks it away
   mid-tap.
 
-## clips.html — the three lists (Audio plays hands-free)
+## Lists as delivery modes (viewer-spec §13, 2026-08-23)
 
-Tabs **Audio (n) · Video (n) · Read (n)**. Audio = nuggets on the A list,
-YouTube only, not pickled; Video = V-list links (at the nugget's start;
-the sync mirrors these videos to the YouTube watch playlist); Read = R-list
-post links with an on-device **read-aloud** (tier 1 TTS, 2026-08-23: the
-phone's own voices via the Web Speech API — voice and speed pickers, pause,
-skip-paragraph, posts read on in list order; the post text comes from
-`GET /post?id=`; speech may stop when the screen locks — a cloud neural
-voice rendered to audio files is the tier-2 upgrade if delivery impedes
-learning). Audio playback: Videos order newest-
+The three lists are a MODE of the viewer, not a separate page: the
+**Listed (A/V/R)** dropdown on row 3 — All · Hide listed · Audio only ·
+Video only · Read only — limits the visible set to one list and shows the
+**player bar**; every other widget (Scope, Source, Category, Domain, Age,
+Rating, Sort/Dir, Group, counts) keeps working, and playback follows the
+current sort. The list you chose is a DELIVERY MODE: Read renders text
+(post text, or a video's transcript opened at the nugget's time; Done
+stamps played), Audio renders ears-only (post text voiced with the phone's
+voice, a post's audio enclosure in our own player, a video's audio via the
+in-page clip or the YouTube app — `video → YouTube app` in the bar, Premium
+keeps it playing under lock inside the nugget-audio playlist), Video renders
+player + screen (the video; audio over a static image; text as a slide).
+**Played** (row 3) hides items a renderer finished; **K** = Keeper ("I
+expect to use this idea near or mid-term"), also a Rating-dropdown filter.
+Listed items ride along with any load so a list is whole under any Scope.
+`clips.html` now forwards into the viewer. In-page audio playback: Videos order newest-
 queued first; clips inside a video play in storyline order. A clip runs
 from the nugget's clamped start to the next queued nugget's start in the
 same video, else `start + clip_default_seconds` (a `yt_params` knob, 120 s,
