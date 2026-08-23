@@ -705,7 +705,15 @@ function renderPlayerBar(v) {
   document.getElementById("pPrev").onclick = () => playerGo(PL.idx - 1);
   document.getElementById("pNext").onclick = () => playerGo(PL.idx + 1);
   document.getElementById("pKeep").onclick = () => { if (cur) setKeeper(cur.id); };
-  if (mode === "read") document.getElementById("pDone").onclick = () => { if (cur) { markPlayed(cur).then(() => render()); playerGo(PL.idx + 1); } };
+  if (mode === "read") document.getElementById("pDone").onclick = () => {
+    if (!cur) return;
+    // Done on a post covers its listed sibling nuggets too (same text).
+    const group = cur.source === "substack" ? PL.items.filter(x => x.video_id === cur.video_id) : [cur];
+    Promise.all(group.map(markPlayed)).then(() => render());
+    let j = PL.idx + 1;
+    while (j < PL.items.length && cur.source === "substack" && PL.items[j].video_id === cur.video_id) j++;
+    playerGo(j);
+  };
   else document.getElementById("pPause").onclick = playerPause;
   if (mode !== "read") document.getElementById("pLock").onclick = () => { document.getElementById("lock").className = "on"; };
   if (mode === "audio") {
@@ -751,7 +759,19 @@ function playerGo(i) {
   const n = PL.items[i];
   const pane = document.getElementById("pane");
   pane.className = "on";
-  const done = () => { markPlayed(n).then(() => { if (PL.active) render(); }); if (PL.active) playerGo(PL.idx + 1); };
+  // Text items render their whole POST, so finishing one covers every
+  // listed sibling nugget of that post: mark them all played and skip to
+  // the next distinct post (2026-08-23 — four nuggets of one NBJ post
+  // voiced the same post four times). Video items keep per-nugget clips.
+  const done = () => {
+    const group = n.source === "substack" ? PL.items.filter(x => x.video_id === n.video_id) : [n];
+    Promise.all(group.map(markPlayed)).then(() => { if (PL.active) render(); });
+    if (PL.active) {
+      let j = PL.idx + 1;
+      while (j < PL.items.length && n.source === "substack" && PL.items[j].video_id === n.video_id) j++;
+      playerGo(j);
+    }
+  };
   // ---- dispatch by chosen mode, then by media ----
   if (PL.mode === "read") renderRead(n, pane);
   else if (PL.mode === "audio") renderAudio(n, pane, done);
