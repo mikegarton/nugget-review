@@ -305,7 +305,9 @@ function suggestedLists(n) {
   if (v <= vizLo) return ["audio"];
   return ["audio", "video"];
 }
-function listsFor(n) { return n.source === "substack" ? ["read"] : ["audio", "video"]; }
+// Every item offers all three lists (Mike, 2026-08-23: the matrix has no
+// dead cells — a post can be voiced on Audio, a video read as transcript).
+function listsFor() { return ["audio", "video", "read"]; }
 // Soft expiry: UNRATED and older (by created_at) than the max TTL over its
 // tags. Returns the trigger {tag, days} so the badge can name WHICH tag's
 // TTL fired (Automatic behavior shows its trigger), or null.
@@ -1017,7 +1019,7 @@ function listButtons(n) {
 // Header A/V buttons (bulk): filled = every nugget on it; half = some;
 // tap = put every unlisted nugget on it, or clear all if all are on it.
 function groupListButtons(vid, g) {
-  const keys = listsFor(g[0]);
+  const keys = listsFor();
   return '<span class="lists">' + keys.map(key => {
     const [, letter, title] = LISTS.find(l => l[0] === key);
     const all = g.every(x => x.queueList === key), some = g.some(x => x.queueList === key);
@@ -1163,7 +1165,7 @@ function card(n) {
 // Legend under the stars: the stars rate the abstract — the only rating.
 function rnote(n) {
   const pre = n.campaignId ? "prospect · ratings teach the campaign<br>" : "";
-  const lists = n.source === "substack" ? "R = reading list" : "A = audio clips · V = video watch list (dashed = suggested by needs-viz)";
+  const lists = "A = listen · V = watch · R = read · K = keeper (dashed = suggested)";
   if (!n.rating) return pre + "stars rate the abstract · 1–2 pickles it (kept, hidden) · " + lists;
   return pre + "&#9733;" + n.rating + " — " + SCALE[n.rating] + " · " + lists;
 }
