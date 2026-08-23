@@ -814,9 +814,45 @@ function audioEl() {
 async function renderAudio(n, pane, done) {
   const m = n.media || {};
   if (n.source === "substack" && m.audio_url) {
-    const a = audioEl(); pane.innerHTML = ""; pane.appendChild(a);
-    a.src = m.audio_url; a.onended = done; a.onerror = () => { pane.insertAdjacentHTML("beforeend", '<div class="empty">audio failed to load — skipping</div>'); setTimeout(() => PL.active && done(), 1200); };
-    setMediaSession(n); a.play().catch(() => {});
+    // Media-vs-text heuristic (Mike, 2026-08-23): the attachment might be a
+    // teaser on top of a full article, or the article might be the stub
+    // under a full episode. Estimate the attachment's words from its
+    // duration (probed from the file header) × speech_words_per_minute and
+    // play it only if that is >= 20% MORE than the body's words; otherwise
+    // voice the article. Either way the pane offers the other choice.
+    // Unknown duration → the safe default is the article.
+    pane.innerHTML = '<div class="ptext" style="color:var(--faint)">sizing attachment vs article…</div>';
+    let p = null;
+    try { p = await (await fetch(BASE + "/post?key=" + encodeURIComponent(KEY) + "&id=" + encodeURIComponent(n.video_id))).json(); } catch (e) {}
+    if (!PL.active || PL.items[PL.idx] !== n) return;
+    const textWords = String(p?.text || "").trim().split(/\s+/).filter(Boolean).length;
+    const durS = await probeAudioDuration(m.audio_url, 4000);
+    if (!PL.active || PL.items[PL.idx] !== n) return;
+    const estWords = durS ? Math.round(durS / 60 * speechWpm) : null;
+    const mediaWins = estWords != null && estWords >= 1.2 * textWords;
+    const mins = durS ? Math.round(durS / 60) : null;
+    const overrideBar =
+      '<div class="bar" style="margin-bottom:6px">' +
+      '<button id="ovMedia"' + (mediaWins ? ' class="primary"' : "") + '>&#9654; attached audio' + (mins != null ? " (~" + mins + " min)" : " (length unknown)") + "</button>" +
+      '<button id="ovText"' + (!mediaWins ? ' class="primary"' : "") + '>&#9654; voice article (' + textWords.toLocaleString() + " words)</button></div>";
+    const playMedia = () => {
+      pane.innerHTML = overrideBar; bindOverrides(n, pane, done, p);
+      const a = audioEl(); pane.appendChild(a);
+      a.src = m.audio_url; a.onended = done;
+      a.onerror = () => { pane.insertAdjacentHTML("beforeend", '<div class="empty">audio failed to load — skipping</div>'); setTimeout(() => PL.active && done(), 1200); };
+      setMediaSession(n); a.play().catch(() => {});
+    };
+    const playText = () => {
+      pane.innerHTML = overrideBar; bindOverrides(n, pane, done, p, playMedia);
+      const holder = document.createElement("div"); holder.innerHTML = '<div class="ptext" id="ttsPane" style="color:var(--dim)">…</div>'; pane.appendChild(holder.firstChild);
+      speakChunks(n, [p?.title || n.videoTitle].concat(speakable(p?.text)), done);
+    };
+    function bindOverrides(nn, pn, dn, pp, altMedia) {
+      const bm = pn.querySelector("#ovMedia"), bt = pn.querySelector("#ovText");
+      if (bm) bm.onclick = () => { stopRenderers(); playMedia(); };
+      if (bt) bt.onclick = () => { stopRenderers(); playText(); };
+    }
+    if (mediaWins) playMedia(); else playText();
     return;
   }
   if (n.source === "substack") { await speakPost(n, pane, done); return; }
@@ -837,11 +873,13 @@ function speakable(text) {
     .flatMap(p => p.match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g) || [p]).map(s => s.trim()).filter(s => s.length > 1);
 }
 async function speakPost(n, pane, done) {
-  if (!synth) { pane.innerHTML = '<div class="empty">no speech synthesis on this browser — skipping</div>'; setTimeout(() => PL.active && done(), 800); return; }
   pane.innerHTML = '<div class="ptext" id="ttsPane" style="color:var(--dim)">loading text…</div>';
   let p; try { p = await (await fetch(BASE + "/post?key=" + encodeURIComponent(KEY) + "&id=" + encodeURIComponent(n.video_id))).json(); } catch (e) { p = null; }
-  const chunks = [p?.title || n.videoTitle].concat(speakable(p?.text));
-  if (chunks.length < 2) { pane.innerHTML = '<div class="empty">no stored text (teaser-only) — skipping</div>'; setTimeout(() => PL.active && done(), 800); return; }
+  speakChunks(n, [p?.title || n.videoTitle].concat(speakable(p?.text)), done);
+}
+function speakChunks(n, chunks, done) {
+  if (!synth) { const el = document.getElementById("ttsPane"); if (el) el.textContent = "no speech synthesis on this browser — skipping"; setTimeout(() => PL.active && done(), 800); return; }
+  if (chunks.length < 2) { const el = document.getElementById("ttsPane"); if (el) el.textContent = "no stored text (teaser-only) — skipping"; setTimeout(() => PL.active && done(), 800); return; }
   PL.tts.chunks = chunks; PL.tts.pos = 0;
   const next = () => {
     if (!PL.active || PL.items[PL.idx] !== n) return;
@@ -857,6 +895,17 @@ async function speakPost(n, pane, done) {
     synth.speak(u);
   };
   next();
+}
+// Duration from the file header only (preload=metadata); null on timeout.
+function probeAudioDuration(url, timeoutMs) {
+  return new Promise((resolve) => {
+    const a = document.createElement("audio");
+    a.preload = "metadata";
+    const to = setTimeout(() => { a.src = ""; resolve(null); }, timeoutMs || 4000);
+    a.onloadedmetadata = () => { clearTimeout(to); resolve(Number.isFinite(a.duration) ? a.duration : null); };
+    a.onerror = () => { clearTimeout(to); resolve(null); };
+    a.src = url;
+  });
 }
 
 // ---- Video renderer: player + screen ---------------------------------------
@@ -918,6 +967,7 @@ function clipEnd(n, start) {
   return end;
 }
 let clipLen = 120;
+let speechWpm = 155; // yt_params speech_words_per_minute (media-vs-text heuristic)
 function setMediaSession(n) {
   if (!("mediaSession" in navigator)) return;
   try {
@@ -1386,6 +1436,7 @@ async function loadData() {
   vizHi = Number.isFinite(Number(data.viz_hi)) ? Number(data.viz_hi) : 70;
   vizLo = Number.isFinite(Number(data.viz_lo)) ? Number(data.viz_lo) : 30;
   clipLen = Number(data.clip_default_seconds) || 120;
+  speechWpm = Number(data.speech_wpm) || 155;
   if (facets) facets.audio_playlist_id = data.audio_playlist_id || facets.audio_playlist_id || "";
   byId = new Map(all.map(n => [n.id, n]));
   channelHype = new Map((data.channel_hype || []).map(c => [c.label, c.avg_hype]));
