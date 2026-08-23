@@ -144,7 +144,8 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("../sw.js").c
 // effect, meaning-changers in the no-scroll zone, frequency, utilities last.
 // "YT-subscrip" not "Subs" (Mike, 2026-08-23): "Subs" read as ambiguous next
 // to Substack — both are subscriptions in the ordinary sense.
-const SCOPES = [["","All"],["subs","YT-subscrip"],["substack","Substack"],["manual","My adds"],["campaign","Campaign"]];
+// Key "yt_subscribed" (was "subs" — it misled in code as it did on screen).
+const SCOPES = [["","All"],["yt_subscribed","YT-subscrip"],["substack","Substack"],["manual","My adds"],["campaign","Campaign"]];
 const AGES   = [["","All"],["2","≤ 2 days"],["10","≤ 10 days"],["60","≤ 2 months"],["180","≤ 6 months"],["365","≤ 1 year"]];
 const GROUPS = [["","None"],["video","Video"]];
 // Sort keys (8-10 §3.1 names; Coach/Broccoli renamed 2026-08-22). Each is
@@ -180,6 +181,8 @@ let channelHype = new Map();
 // Storage key bumped ytr2 -> ytr3 (2026-08-22): state shape changed again
 // (state chips/watched gone; dir, hideQ, sortOrigin, group-as-value added).
 let state = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem("ytr3") || "{}"));
+// Saved-state migration: the scope key "subs" was renamed 2026-08-23.
+if (state.scope === "subs") state.scope = "yt_subscribed";
 let openId = null;
 let collapsed = new Set();
 // Cards mutated while on screen keep their spot even once they stop passing
@@ -251,7 +254,7 @@ function displayStart(n) {
 function scopePass(n) {
   const manual = !!(n.sourceKey && n.sourceKey.endsWith("_manual"));
   switch (state.scope) {
-    case "subs":     return n.source === "youtube" && n.campaignId == null && !manual;
+    case "yt_subscribed": return n.source === "youtube" && n.campaignId == null && !manual;
     case "substack": return n.source === "substack";
     case "manual":   return manual;
     case "campaign": return n.campaignId != null;
