@@ -534,6 +534,7 @@ function touched() { pinned.clear(); toasts.clear(); paintLimit = WINDOW; save()
 
 function render() {
   renderControls();
+  statusVisibility();
   if (!loadedSel) {
     document.getElementById("count").textContent = facets
       ? "choose Scope and Source, then tap Apply"
@@ -849,9 +850,20 @@ function paceHtml(used, quota, elapsed, limiter) {
   return ' <span class="' + cls + '">' + r.toFixed(1) + "&times; pace</span> <span style=\"opacity:.75\">(" + limiter + ")</span>";
 }
 
+// The status strip is visible only while the list needs a refresh (at open
+// and after a Scope/Source change — i.e. while Apply shows) and hidden after
+// a load, to give the screen back (Mike, 2026-08-23). Data arrives with
+// /facets (and again with each /data).
+let lastStatus = null;
+function statusVisibility() {
+  const el = document.getElementById("status");
+  const show = applyPending() && lastStatus && el.className !== "";
+  el.style.display = show ? "block" : "none";
+}
 function renderStatus(s) {
   const el = document.getElementById("status");
   if (!s) return;
+  lastStatus = s;
   if (s.alarms && s.alarms.length) {
     el.className = "alarm";
     el.textContent = "⚠ " + s.alarms.join(" · ");
@@ -872,6 +884,7 @@ function renderStatus(s) {
     el.className = "quiet";
     el.innerHTML = "✓ " + bits.join(" &nbsp;·&nbsp; ");
   }
+  statusVisibility();
 }
 
 function applyZoom() { document.body.style.zoom = state.zoom || 1; }
@@ -906,6 +919,7 @@ async function load() {
   }
   facets = await res.json();
   try { localStorage.setItem("ytr3_facets", JSON.stringify(facets)); } catch (e) {}
+  renderStatus(facets.status);
   render();
 }
 
