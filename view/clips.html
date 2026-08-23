@@ -98,6 +98,10 @@ function displayStart(start, duration) {
 // clip_default_seconds — capped at the video's duration. (Accepted 2026-08-22.)
 function buildClips(data) {
   clipLen = Number(data.clip_default_seconds) || 120;
+  // Normalized payload (2026-08-23): video metadata in data.videos by
+  // video_id; the per-nugget embed tolerated as a fallback.
+  const videos = data.videos || {};
+  for (const n of data.nuggets || []) if (!n.yt_videos) n.yt_videos = videos[n.video_id] || null;
   const rows = (data.nuggets || []).filter(n =>
     n.queued_at && (n.yt_videos?.source || "youtube") === "youtube" && !(n.rating != null && n.rating <= 2));
   const byVid = new Map();

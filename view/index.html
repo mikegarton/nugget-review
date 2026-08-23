@@ -190,6 +190,16 @@ let collapsed = new Set();
 // vanishing mid-tap). Cleared on any filter/sort/group change.
 let pinned = new Set();
 let toasts = new Map(); // nugget id -> acknowledgment text, cleared with pinned
+// Windowed paint (2026-08-23): the list is filtered and sorted in FULL (the
+// counts are exact) but only the first WINDOW cards are built into the DOM;
+// the next WINDOW append as the sentinel scrolls near (painting ~19k cards
+// at once was a multi-second cost on the phone; a session reads <40).
+const WINDOW = 60;
+let paintLimit = WINDOW;
+const io = ("IntersectionObserver" in window)
+  ? new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { paintLimit += WINDOW; render(); } },
+      { rootMargin: "800px" })
+  : null;
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g,
@@ -434,7 +444,7 @@ function bind(id, prop, after) {
 }
 // Any filter/sort/group change: persist, drop pins and acknowledgments
 // (views stay honest), re-render.
-function touched() { pinned.clear(); toasts.clear(); save(); render(); }
+function touched() { pinned.clear(); toasts.clear(); paintLimit = WINDOW; save(); render(); }
 
 function render() {
   renderControls();
@@ -447,7 +457,20 @@ function render() {
   const list = document.getElementById("list");
   const me = manualEmptyHtml();
   if (!v.length) { list.innerHTML = me + '<div class="empty">Nothing here.</div>'; return; }
-  list.innerHTML = me + (state.group === "video" ? grouped(v) : v.map(card).join(""));
+  // Blocks = {html, n}: a card (n=1) or a whole video group (n = its size);
+  // paint blocks until paintLimit nuggets are covered, then a sentinel.
+  const blocks = state.group === "video" ? grouped(v) : v.map(n => ({ html: card(n), n: 1 }));
+  const out = [];
+  let covered = 0, i = 0;
+  for (; i < blocks.length && covered < paintLimit; i++) { out.push(blocks[i].html); covered += blocks[i].n; }
+  const rest = v.length - covered;
+  if (rest > 0) out.push('<div id="more" class="empty">' + rest + " more below — keep scrolling</div>");
+  list.innerHTML = me + out.join("");
+  const s = document.getElementById("more");
+  if (s) {
+    if (io) io.observe(s);
+    else s.onclick = () => { paintLimit += WINDOW; render(); }; // no observer: tap to load
+  }
 }
 
 // Manual adds analyzed with ZERO nuggets — shown because you asked (the
@@ -487,11 +510,13 @@ function grouped(v) {
     if (done.has(n.video_id)) continue;
     done.add(n.video_id);
     const g = byVid.get(n.video_id);
-    if (g.length === 1) { out.push(card(n)); continue; }
-    out.push(ghead(n, g));
-    if (!collapsed.has(n.video_id)) out.push('<div class="gcards">' + g.map(card).join("") + "</div>");
+    if (g.length === 1) { out.push({ html: card(n), n: 1 }); continue; }
+    out.push({
+      html: ghead(n, g) + (collapsed.has(n.video_id) ? "" : '<div class="gcards">' + g.map(card).join("") + "</div>"),
+      n: g.length,
+    });
   }
-  return out.join("");
+  return out;
 }
 
 // Campaign provenance chips (Mike, 2026-08-23): the campaign and the search
@@ -735,28 +760,35 @@ async function load() {
   manualEmpty = data.manual_empty || [];
   catTtls = data.category_ttls || {};
   defaultTtl = data.default_ttl_days || 180;
-  all = (data.nuggets || []).map(n => ({
-    ...n,
-    channelLabel: n.yt_videos?.yt_channels?.label || n.yt_videos?.channel_id || "?",
-    videoTitle: n.yt_videos?.title || "",
-    plainTitle: n.yt_videos?.plain_title || "",
-    hypeLevel: n.yt_videos?.hype_level ?? null,
-    campaignId: n.yt_videos?.campaign_id ?? null,
-    source: n.yt_videos?.source || "youtube",
-    sourceKey: n.yt_videos?.source_key || null,
-    discoveredAt: n.yt_videos?.discovered_at || null,
-    manualAddedAt: n.yt_videos?.manual_added_at || null,
-    generation: n.yt_videos?.generation ?? 1,
-    contentUrl: n.yt_videos?.url || null,
-    campaignName: n.yt_videos?.yt_campaigns?.name ?? null,
-    campaignQuery: (data.campaign_queries || {})[n.video_id] ?? null,
-    publishedAt: n.yt_videos?.published_at,
-    durationSeconds: n.yt_videos?.duration_seconds ?? null,
-    viewCount: n.yt_videos?.view_count ?? null,
-    needsViz: n.needs_viz ?? null,
-    queuedAt: n.queued_at || null,
-    reviewedAt: n.reviewed_at || null,
-  }));
+  // Normalized payload (2026-08-23): video metadata ships ONCE in
+  // data.videos keyed by video_id; the per-nugget embed is tolerated as a
+  // fallback for an older function build.
+  const videos = data.videos || {};
+  all = (data.nuggets || []).map(n => {
+    const v = n.yt_videos || videos[n.video_id] || {};
+    return {
+      ...n,
+      channelLabel: v.yt_channels?.label || v.channel_id || "?",
+      videoTitle: v.title || "",
+      plainTitle: v.plain_title || "",
+      hypeLevel: v.hype_level ?? null,
+      campaignId: v.campaign_id ?? null,
+      source: v.source || "youtube",
+      sourceKey: v.source_key || null,
+      discoveredAt: v.discovered_at || null,
+      manualAddedAt: v.manual_added_at || null,
+      generation: v.generation ?? 1,
+      contentUrl: v.url || null,
+      campaignName: v.yt_campaigns?.name ?? null,
+      campaignQuery: (data.campaign_queries || {})[n.video_id] ?? null,
+      publishedAt: v.published_at,
+      durationSeconds: v.duration_seconds ?? null,
+      viewCount: v.view_count ?? null,
+      needsViz: n.needs_viz ?? null,
+      queuedAt: n.queued_at || null,
+      reviewedAt: n.reviewed_at || null,
+    };
+  });
   channelHype = new Map((data.channel_hype || []).map(c => [c.label, c.avg_hype]));
   regress();
   // Category vocabulary: server-known tags first (TTL seed order), then
