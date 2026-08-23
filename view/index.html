@@ -894,16 +894,21 @@ async function load() {
   // Old saved Source values (channel labels) predate the ch:<id> encoding.
   if (state.src && !/^(ch|c|q):/.test(state.src)) state.src = "";
   applyZoom();
+  // Paint from the last facets this device saw (instant, even on a cold
+  // function — the first call after idle measured 2.5 s vs 0.9 s warm,
+  // 2026-08-23), then refresh in the background.
+  try { const c = localStorage.getItem("ytr3_facets"); if (c) facets = JSON.parse(c); } catch (e) {}
   render();
   let res;
   try { res = await fetch(BASE + "/facets?key=" + encodeURIComponent(KEY)); }
-  catch (e) { document.getElementById("list").innerHTML = '<div class="empty">Could not reach the nugget API.</div>'; return; }
+  catch (e) { if (!facets) document.getElementById("list").innerHTML = '<div class="empty">Could not reach the nugget API.</div>'; return; }
   if (!res.ok) {
-    document.getElementById("list").innerHTML =
+    if (!facets) document.getElementById("list").innerHTML =
       '<div class="empty">API error ' + res.status + (res.status === 401 ? " — key rejected." : "") + "</div>";
     return;
   }
   facets = await res.json();
+  try { localStorage.setItem("ytr3_facets", JSON.stringify(facets)); } catch (e) {}
   render();
 }
 
