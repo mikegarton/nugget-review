@@ -747,7 +747,7 @@ function ghead(n, g) {
       groupListButtons(n.video_id, g) +
       '<a class="watch gwatch" target="_blank" rel="noopener" href="' +
         (n.source === "substack" ? esc(n.contentUrl || "#") : "https://www.youtube.com/watch?v=" + n.video_id) + '">' +
-        (n.source === "substack" ? "&#128214; Read" : "&#9654; Watch") + "</a>" +
+        (n.source === "substack" ? "&#128214; Open" : "&#9654; Watch") + "</a>" +
     "</div></div>";
 }
 
@@ -805,7 +805,7 @@ function card(n) {
   const start = displayStart(n);
   const link = isPost ? (n.contentUrl || "#")
     : "https://www.youtube.com/watch?v=" + n.video_id + (start != null ? "&t=" + start + "s" : "");
-  const watchLabel = isPost ? "&#128214; Read now"
+  const watchLabel = isPost ? "&#128214; Open post"
     : start != null ? "&#9654; Watch at " + fmtT(start) : "&#9654; Watch now";
   const ex = expiry(n);
   const toast = toasts.get(n.id);
