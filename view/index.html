@@ -552,12 +552,9 @@ function renderControls() {
     selectHtml("cGroup", "Group", GROUPS, state.group, fillFor("group")) +
     selectHtml("cSort", "Sort", SORTS.map(s => [s[0], s[1]]), state.sort, sortFill) +
     '<span class="ctl"><label for="cDir">Dir</label><button id="cDir" class="' + (state.dir === "asc" ? "user-set" : "") +
-      '" title="ascending is the weeding view">' + (state.dir === "asc" ? "▲ asc" : "▼ desc") + "</button></span>" +
-    '<span class="gap"></span>' +
-    // The lists page (audio clips / video list / read-aloud) lives in this
-    // app's scope; the installed app has no address bar, so it needs a
-    // door from here (Mike, 2026-08-23).
-    '<span class="ctl"><label>Lists</label><button id="goLists" class="util" title="switch to the Audio list (the Listed dropdown on row 3 picks the mode)">A / V / R ›</button></span>';
+      '" title="ascending is the weeding view">' + (state.dir === "asc" ? "▲ asc" : "▼ desc") + "</button></span>";
+    // (The old row-2 "A / V / R ›" jump button is gone, 2026-08-23: it showed
+    // no state and duplicated the Listed dropdown, the one real mode control.)
   // Row 3 — [Apply while pending], Rating, Expired, Queued (Q), gap, zoom pair.
   // "Queued (Q)" included/hidden (renamed 2026-08-23 — "Q shown" did not say
   // what it did): nuggets you marked Q are either included in the list or
@@ -597,8 +594,6 @@ function renderControls() {
   document.getElementById("cExp").onclick = () => { state.expired = !state.expired; touched(); };
   document.getElementById("cPlayed").onclick = () => { state.played = !state.played; touched(); };
   bind("cListed", "listed", () => { playerStop(); });
-  const gl = document.getElementById("goLists");
-  if (gl) { gl.disabled = !loadedSel; gl.onclick = () => { state.listed = listMode() ? "all" : "audio"; playerStop(); touched(); }; }
   document.getElementById("zoomIn").onclick = () => zoomStep(1);
   document.getElementById("zoomOut").onclick = () => zoomStep(-1);
 }
