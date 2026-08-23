@@ -73,11 +73,15 @@ before the code, plus the controls-by-state-variables matrix.
    view (kept; find it under Rating → Pickled)", then leaves the default
    view. Nothing is ever deleted (the old 1★ purge is retired); pickled
    rows are reachable only through the Rating dropdown's Pickled choice.
-3. **Q badge** (on every nugget card and every video header): want to
-   watch. Green when on; the header badge shows the group's state and
-   stamps every unqueued nugget (or clears all when all are queued). Queued
-   nuggets are what `clips.html` plays; the add-only watch-playlist sync is
-   unaffected (it mirrors manual adds, not Q).
+3. **A / V / R list buttons** (2026-08-23; on every nugget card, A/V on
+   video headers as bulk controls): send a nugget to exactly one list —
+   **A** audio (the clips page plays it hands-free), **V** video (the
+   watch list; the add-only sync mirrors these videos onto your YouTube
+   watch playlist), **R** reading (posts). The data-backed suggestion is
+   pre-outlined (dashed green): posts → R; needs-viz ≥ `viz_hi` → V; ≤
+   `viz_lo` → A; between/unscored → both. Tap the lit letter to clear;
+   another letter moves it. The compact strip `A C B V` (appeal · coach ·
+   broccoli ± · needs-viz) on each card is the data behind the choice.
 4. **Watched marking is gone** (2026-08-20 ruling): no toggle, no filter,
    nothing reads `watched_at`.
 
@@ -149,9 +153,12 @@ zone; frequency orders the rest; utilities last.
   filter/sort/group change, so acting on a card never yanks it away
   mid-tap.
 
-## clips.html — hands-free sequential playback
+## clips.html — the three lists (Audio plays hands-free)
 
-List = queued (Q) nuggets, YouTube only, not pickled. Videos order newest-
+Tabs **Audio (n) · Video (n) · Read (n)**. Audio = nuggets on the A list,
+YouTube only, not pickled; Video = V-list links (at the nugget's start;
+the sync mirrors these videos to the YouTube watch playlist); Read = R-list
+post links. Audio playback: Videos order newest-
 queued first; clips inside a video play in storyline order. A clip runs
 from the nugget's clamped start to the next queued nugget's start in the
 same video, else `start + clip_default_seconds` (a `yt_params` knob, 120 s,

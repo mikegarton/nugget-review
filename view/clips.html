@@ -34,6 +34,11 @@
   .item .h { font-weight: 600; }
   .item .m { font-size: 12px; color: var(--dim); margin-top: 3px; display: flex; gap: 8px; flex-wrap: wrap; }
   .empty { color: var(--faint); text-align: center; padding: 40px 0; }
+  .tabs { display: inline-flex; gap: 4px; }
+  button.tab { border-radius: 16px; padding: 6px 12px; color: var(--dim); }
+  button.tab.on { border-color: var(--accent); color: var(--accent); }
+  .note { font-size: 12px; color: var(--faint); margin: 4px 0 8px; }
+  .item a { color: var(--accent); text-decoration: none; }
   /* Pocket guard: after Start, a full-screen overlay swallows touches; a
      1.5 s long-press unlocks. Audio keeps playing underneath. */
   #lock { position: fixed; inset: 0; z-index: 50; background: rgba(8,9,12,.92); display: none;
@@ -46,7 +51,14 @@
 <body>
 <header>
   <div class="bar">
-    <h1>Nugget clips</h1>
+    <h1>Nugget lists</h1>
+    <span id="tabs" class="tabs">
+      <button id="tabAudio" class="tab on">Audio</button>
+      <button id="tabVideo" class="tab">Video</button>
+      <button id="tabRead" class="tab">Read</button>
+    </span>
+  </div>
+  <div class="bar" id="audioBar">
     <button id="prev" title="previous clip">&#9664;</button>
     <button id="start" class="primary">&#9654; Start</button>
     <button id="next" title="next clip">&#9654;&#9654;</button>
@@ -55,9 +67,19 @@
   <div id="count"></div>
 </header>
 <main>
-  <div class="pbox"><div id="player"></div></div>
-  <div id="now"></div>
-  <div class="list" id="list"><div class="empty">Loading…</div></div>
+  <section id="secAudio">
+    <div class="pbox"><div id="player"></div></div>
+    <div id="now"></div>
+    <div class="list" id="list"><div class="empty">Loading…</div></div>
+  </section>
+  <section id="secVideo" style="display:none">
+    <div class="note">Your video list — nuggets whose understanding needs the screen. The add-only sync mirrors these videos onto your YouTube watch playlist every 15 minutes; links below open at the nugget's start.</div>
+    <div class="list" id="listVideo"></div>
+  </section>
+  <section id="secRead" style="display:none">
+    <div class="note">Your reading list — posts and articles.</div>
+    <div class="list" id="listRead"></div>
+  </section>
 </main>
 <div id="lock"><div><b>locked</b>audio keeps playing — press and hold 1.5 s to unlock</div></div>
 <script>
@@ -76,7 +98,9 @@ if (urlKey) localStorage.setItem("cr_review_key", urlKey);
 const KEY = urlKey || localStorage.getItem("cr_review_key");
 const END_MARGIN = 30; // same display clamp as the viewer (spec §7.2)
 
-let clips = [];      // [{id, videoId, title, channel, start, end, headline}]
+let clips = [];      // AUDIO list: [{id, videoId, title, channel, start, end, headline}]
+let videoItems = []; // VIDEO list (watch links; mirrored to the YouTube playlist by the sync)
+let readItems = [];  // READ list (posts/articles)
 let idx = -1;        // current clip index
 let player = null, apiReady = false, wakeLock = null, clipLen = 120;
 
@@ -102,8 +126,20 @@ function buildClips(data) {
   // video_id; the per-nugget embed tolerated as a fallback.
   const videos = data.videos || {};
   for (const n of data.nuggets || []) if (!n.yt_videos) n.yt_videos = videos[n.video_id] || null;
-  const rows = (data.nuggets || []).filter(n =>
-    n.queued_at && (n.yt_videos?.source || "youtube") === "youtube" && !(n.rating != null && n.rating <= 2));
+  const listed = (data.nuggets || []).filter(n => (n.queue_list || n.queued_at) && !(n.rating != null && n.rating <= 2));
+  const listOf = (n) => n.queue_list || ((n.yt_videos?.source || "youtube") === "substack" ? "read" : "audio");
+  // Three lists (2026-08-23): audio plays here; video and read are link lists.
+  const mk = (n) => ({
+    id: n.id, videoId: n.video_id,
+    title: n.yt_videos?.plain_title || n.yt_videos?.title || n.video_id,
+    channel: n.yt_videos?.yt_channels?.label || "?",
+    headline: n.headline || (n.content || "").slice(0, 100),
+    start: displayStart(n.start_seconds, n.yt_videos?.duration_seconds || null),
+    url: n.yt_videos?.url || null, queuedAt: n.queued_at,
+  });
+  videoItems = listed.filter(n => listOf(n) === "video").map(mk).sort((a, b) => new Date(b.queuedAt) - new Date(a.queuedAt));
+  readItems = listed.filter(n => listOf(n) === "read").map(mk).sort((a, b) => new Date(b.queuedAt) - new Date(a.queuedAt));
+  const rows = listed.filter(n => listOf(n) === "audio" && (n.yt_videos?.source || "youtube") === "youtube");
   const byVid = new Map();
   for (const n of rows) {
     if (!byVid.has(n.video_id)) byVid.set(n.video_id, []);
@@ -134,16 +170,40 @@ function buildClips(data) {
   return out;
 }
 
+function renderOtherLists() {
+  const fmtV = (c) => '<div class="item"><div class="h"><a target="_blank" rel="noopener" href="https://www.youtube.com/watch?v=' + esc(c.videoId) +
+    (c.start ? "&t=" + c.start + "s" : "") + '">&#9654; ' + esc(c.headline) + "</a></div>" +
+    '<div class="m"><span>' + esc(c.channel) + "</span><span>" + esc(c.title) + "</span>" + (c.start ? "<span>at " + fmtT(c.start) + "</span>" : "") + "</div></div>";
+  const fmtR = (c) => '<div class="item"><div class="h"><a target="_blank" rel="noopener" href="' + esc(c.url || "#") + '">&#128214; ' + esc(c.headline) + "</a></div>" +
+    '<div class="m"><span>' + esc(c.channel) + "</span><span>" + esc(c.title) + "</span></div></div>";
+  document.getElementById("listVideo").innerHTML = videoItems.length ? videoItems.map(fmtV).join("") : '<div class="empty">Nothing on the video list — tap V on a nugget in the viewer.</div>';
+  document.getElementById("listRead").innerHTML = readItems.length ? readItems.map(fmtR).join("") : '<div class="empty">Nothing on the reading list — tap R on a post in the viewer.</div>';
+  document.getElementById("tabAudio").textContent = "Audio (" + clips.length + ")";
+  document.getElementById("tabVideo").textContent = "Video (" + videoItems.length + ")";
+  document.getElementById("tabRead").textContent = "Read (" + readItems.length + ")";
+}
+function showTab(which) {
+  for (const t of ["Audio", "Video", "Read"]) {
+    document.getElementById("sec" + t).style.display = t === which ? "" : "none";
+    document.getElementById("tab" + t).className = "tab" + (t === which ? " on" : "");
+  }
+  document.getElementById("audioBar").style.display = which === "Audio" ? "" : "none";
+}
+document.getElementById("tabAudio").onclick = () => showTab("Audio");
+document.getElementById("tabVideo").onclick = () => showTab("Video");
+document.getElementById("tabRead").onclick = () => showTab("Read");
+
 function renderList() {
+  renderOtherLists();
   const el = document.getElementById("list");
-  if (!clips.length) { el.innerHTML = '<div class="empty">No queued clips — tap Q on nuggets in the viewer first.</div>'; return; }
+  if (!clips.length) { el.innerHTML = '<div class="empty">Nothing on the audio list — tap A on nuggets in the viewer first.</div>'; return; }
   el.innerHTML = clips.map((c, i) =>
     '<div class="item' + (i === idx ? " now" : i < idx ? " done" : "") + '" onclick="jump(' + i + ')">' +
       '<div class="h">' + esc(c.headline) + "</div>" +
       '<div class="m"><span>' + esc(c.channel) + "</span><span>" + esc(c.title) + "</span>" +
       "<span>" + fmtT(c.start) + "–" + fmtT(c.end) + "</span></div></div>").join("");
   document.getElementById("count").textContent =
-    clips.length + " clips · " + [...new Set(clips.map(c => c.videoId))].length + " videos · default clip " + clipLen + " s";
+    clips.length + " audio clips · " + [...new Set(clips.map(c => c.videoId))].length + " videos · default clip " + clipLen + " s";
   const c = clips[idx];
   document.getElementById("now").textContent = c ? ("now: " + c.headline + " — " + c.channel) : "";
   document.getElementById("prev").disabled = idx <= 0;
