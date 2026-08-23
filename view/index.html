@@ -1211,7 +1211,7 @@ function card(n) {
       campaignChips(n) +
       scoreStrip(n) +
       (n.rating ? '<span class="chip" style="color:var(--gold)">&#9733;' + n.rating + "</span>" : "") +
-      (n.playedAt ? '<span class="chip" title="a list renderer finished this">played</span>' : "") +
+      (n.playedAt ? '<button class="chip" style="border:none;cursor:pointer;color:var(--dim)" title="a list renderer finished this — tap to mark unplayed" onclick="togglePlayed(\'' + n.id + '\')">played</button>' : "") +
       listButtons(n) +
       '<button class="lb kb' + (n.keeperAt ? " on" : "") + '" title="Keeper: I expect to use this idea near or mid-term' + (n.keeperAt ? " — tap to clear" : "") + '" onclick="setKeeper(\'' + n.id + "')\">K</button>" +
     "</div>" +
@@ -1275,6 +1275,13 @@ async function setKeeper(id) {
   n.keeperAt = n.keeperAt ? null : new Date().toISOString();
   pinned.add(id); render();
   await post("/keeper", { id, keeper: !!n.keeperAt });
+}
+// Tap the "played" chip to mark unplayed (Mike, 2026-08-23).
+async function togglePlayed(id) {
+  const n = all.find(x => x.id === id);
+  n.playedAt = null;
+  pinned.add(id); render();
+  await post("/played", { id, played: false });
 }
 // Played (§13.4): stamped by the renderer that finished the item.
 async function markPlayed(n) {
