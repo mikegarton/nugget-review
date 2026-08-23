@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Nugget ops</title>
+<link rel="manifest" href="manifest-ops.webmanifest">
 <style>
   :root {
     --bg: #101114; --card: #1a1c21; --card2: #22252c; --line: #2c3038;
@@ -144,7 +145,13 @@ Every change is audited.</div>
 
 <script>
 const BASE = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-review";
-const KEY = new URLSearchParams(location.search).get("key");
+// Key from ?key= once, then this device's localStorage (cr_review_key — shared
+// with the viewer and capture surfaces) so the installed N-ops app (RV-031)
+// opens without a key in its start_url; the public repo forbids one there.
+const urlKey = new URLSearchParams(location.search).get("key");
+if (urlKey) localStorage.setItem("cr_review_key", urlKey);
+const KEY = urlKey || localStorage.getItem("cr_review_key");
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 let ops = null;
 let sortKey = "nug_per_usd", sortDir = -1;
 

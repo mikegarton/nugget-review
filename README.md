@@ -5,11 +5,16 @@ Phone-first review dashboard for the [nugget pipeline]
 Substack publications through one review loop. This repo is the **static
 shell only**, served by GitHub Pages (public + Pages enabled 2026-07-29):
 
-- `index.html` — the viewer (skim, rate, queue; shows manual adds that
-  produced zero nuggets — you asked, so the answer is shown)
+- `index.html` — the viewer (filter, sort, rate abstracts, queue clips;
+  shows manual adds that produced zero nuggets — you asked, so the answer
+  is shown). Installable as **N-view** (`manifest-view.webmanifest`).
+- `clips.html` — the clip player (2026-08-22): plays the queued nuggets as
+  clips back-to-back in an embedded YouTube player — one tap, phone in the
+  pocket, audio on earbuds. Same key as the viewer.
 - `ops.html` — burn rates, campaign yields, channel + per-source economics,
   live knobs (marked knobs and per-source priority editable with the ops
-  write key; bounds enforced server-side, changes audited)
+  write key; bounds enforced server-side, changes audited). Installable as
+  **N-ops** (`manifest-ops.webmanifest`).
 - The control room (`home.html`) moved to `C:\dev\control-room\` on
   2026-08-08 — it is a cross-project personal hub, not part of this app's
   shell. The paste box for sending YouTube links (`yt-add`) lives there.
@@ -21,17 +26,21 @@ shell only**, served by GitHub Pages (public + Pages enabled 2026-07-29):
   (extension install/use, the Android share sheet, the unlisted-playlist
   inbox that covers the NVIDIA Shield and phone/tablet YouTube apps, and
   the paste box), plus the on-site review-key save box (`#setup`) that the
-  share handler depends on; it is also the PWA `start_url`
-- `manifest.webmanifest` + `sw.js` + `share.html` — the site is an
-  installable PWA whose `share_target` puts "Nuggets" in Android's share
-  sheet; YouTube app → Share → Nuggets posts the video to `yt-add`
-  (share.html reads the review key saved by capture.html's setup box).
-  The service worker caches nothing — install-eligibility only.
+  share handler depends on; it is also the **N-add** PWA `start_url`
+- `manifest.webmanifest` + `sw.js` + `share.html` — N-add: the installable
+  PWA whose `share_target` puts "Nuggets" in Android's share sheet; YouTube
+  app → Share → Nuggets posts the video to `yt-add` (share.html reads the
+  review key saved by capture.html's setup box). The service worker caches
+  nothing — install-eligibility only. N-view and N-ops reuse the same
+  worker; only N-add carries the share_target (keeps the share sheet
+  single). Icons: gold N = N-add, blue N+V = N-view, green N+O = N-ops.
 
 It contains no data and no secrets: all data comes from the pipeline's
-key-gated `yt-review` Supabase function (JSON, CORS-enabled), and the key
-lives only in the bookmark's `?key=` parameter (capture.html's setup box
-keeps it in each device's browser localStorage for the share handler).
+key-gated `yt-review` Supabase function (JSON, CORS-enabled). The key
+arrives once via the bookmark's `?key=` parameter and is then kept in the
+device's browser localStorage (`cr_review_key`, shared by all pages), so
+the installed apps open without a key in any start_url — the public repo
+forbids one there.
 
 Why Pages: Supabase's gateway rewrites any `text/html` response from
 `*.supabase.co` to `text/plain` with a sandbox CSP, so the shell cannot be
@@ -39,120 +48,115 @@ served next to the API.
 
 Bookmark: `https://mikegarton.github.io/nugget-review/?key=<YT_REVIEW_KEY>`
 
-## The review loop
+## The review loop (2026-08-22)
 
-1. Skim cards and rate the **nugget** from its abstract (star tooltips carry
-   the scale: 1 never gonna look · 2 unlikely to use · 3 didn't regret ·
-   4 good · 5 outstanding). Tap the same star again to clear.
-2. Rating **4–5 queues it** — the watch list is the chip combo
-   **Unwatched + ≥4★ + Rating sort**, with links that start just before
-   the nugget (the old one-tap Queue mode was retired 2026-08-06 with the
-   filter redesign; the queue→playlist sync is server-side and unchanged).
-3. The **Watch link marks the card watched** on click (the toggle undoes a
-   mis-click). After watching, the same stars become the **video rating** —
-   revise or confirm.
-4. A card drops out of the **open** view once it is both rated and watched,
-   or as soon as it is rated 1–2 (a low rating dismisses it, watched or
-   not). Dismissals are permanent at the API level: after the next reload,
-   1–2★ nuggets are never shipped to the app again — 2★ rows stay in the
-   database as facts, 1★ rows are deleted outright by the processor after
-   a 24 h grace window (un-rate within a day to save a mis-tap).
+Spec of record: `working_docs/projects/nugget-review/viewer-spec.md` draft 6
+— every control documented desc / args / pre / modifies / post, written
+before the code, plus the controls-by-state-variables matrix.
 
-## Filters (2026-08-06 redesign: three orthogonal chip groups)
+1. Filter and sort the abstracts, read them, rate them. The stars rate the
+   **abstract** — ONE rating column; there is no video rating (Mike,
+   2026-08-22). Scale: 1 never gonna look · 2 unlikely to use · 3 didn't
+   regret · 4 good · 5 outstanding. Tap the same star again to clear.
+2. **1–2★ = pickled**: the card shows "pickled — hidden from the default
+   view (kept; find it under Rating → Pickled)", then leaves the default
+   view. Nothing is ever deleted (the old 1★ purge is retired); pickled
+   rows are reachable only through the Rating dropdown's Pickled choice.
+3. **Q badge** (on every nugget card and every video header): want to
+   watch. Green when on; the header badge shows the group's state and
+   stamps every unqueued nugget (or clears all when all are queued). Queued
+   nuggets are what `clips.html` plays; the add-only watch-playlist sync is
+   unaffected (it mirrors manual adds, not Q).
+4. **Watched marking is gone** (2026-08-20 ruling): no toggle, no filter,
+   nothing reads `watched_at`.
 
-The old Comfort/Stretch/Newest/Queue/Prospect modes conflated scope, sort,
-and judgment state; they are now three independent, horizontally scrollable
-chip rows (frequency-ordered from the left, every group leads with **All**;
-Android-with-large-fonts is the layout acceptance test). Choices persist in
-`localStorage` (`ytr2`).
+## Controls (viewer-spec draft 6 §1–§3)
 
-- **Row 1 — where from**: leads with the domain dropdown, then the
-  **particular-source dropdown** — which only ever lists sources present
-  in *available ∩ selected scope type* (a selection that narrows away
-  resets to "all sources") — then the scope chips (provenance only, no
-  group is privileged): All · Subs (youtube, neither campaign nor manual)
-  · Substack · My adds · Campaign; max-age dropdown last (≤ 2 days …
-  ≤ 1 year, by publish date).
-- **Row 2 — categories**: All · one chip per category tag present in the
-  data (has-tag semantics; nuggets carry ordered tags, primary first —
-  pre-2026-08-06 nuggets show their legacy single type as a
-  pseudo-category).
-- **Row 3 — sort ‖ state ‖ rating**: sort Taste (personal_score) ·
-  Stretch (mentor residual — the part of expert_score your taste doesn't
-  explain) · Newest (publish date) · Rating · Added (when you sent it —
-  the old "my adds" ordering); state **Open** (default — not yet both
-  rated and watched, minus anything rated 1–2, minus expired) · Unrated ·
-  Unwatched · Watched · **Expired** · Any; rating Any★ · ≥4★ · 5★.
-- **Soft expiry**: an UNRATED nugget older (by `created_at` — when it
-  entered the pile) than the longest TTL among its category tags drops out
-  of Open into the Expired chip. Rows are never deleted by expiry; any
-  rating exempts a nugget for good. TTLs live in `yt_categories`
-  (SQL-editor edits apply on next load).
-- **Header count** reads `N listed / M available`: listed = after all
-  filters; available = judgment filters only (state + rating chips),
-  scope/source/category/domain/age ignored — the ratio shows how much
-  your scope choice is hiding.
-- **By video** toggle (default on): multi-nugget videos group under a
-  collapsible header — "X nuggets in Y" with channel, date, a Watch
-  button for the whole video (marks every nugget in the group watched),
-  and a star row that rates every **unrated** nugget in the group
-  (mixed individual ratings are never overwritten; 4–5 queues the lot,
-  1–2 dismisses it). A group carrying ONE uniform rating — the result of
-  a previous header tap — stays correctable from the header: a different
-  star re-rates the lot, the same star clears it. Header stars light up
-  to the group's lowest rating.
-  The header leads with the humble title (`plain_title` from the
-  processor; pre-hype videos fall back to the lead nugget's headline),
-  with the channel's verbatim YouTube title below it and a signed
-  **hype ±N** chip (−5 underselling … +5 clickbait, scored
-  title-vs-transcript at processing time). Groups sort by their best
-  nugget in the current sort; nuggets within a group run in timestamp
-  order. Singletons stay plain cards. Duration shows once the video's
-  `duration_seconds` is enriched.
-- Source dropdown entries carry the channel's running average hype
-  level to one decimal — the channel-weeding signal (server-side
-  `yt_channel_hype` view, so it includes videos that yielded zero
-  nuggets).
-- Campaign nuggets get **no special treatment** (the old Prospect
-  quarantine was retired 2026-08-06 — Campaign is just a scope chip).
-  Stars keep one meaning everywhere ("I intend to watch this"); the
-  legend under a campaign nugget's stars carries the standing reminder,
-  and ratings feed the campaign's per-query yield stats.
+Three horizontally scrollable rows of dropdown chips, each chip with its
+dimension label above it (the label scrolls with the chip); every filter
+leads with **All** as its default; "Any" is retired. Choices persist in
+`localStorage` (`ytr3`). Row order follows the layered rule: a control that
+modifies another sits to its left; meaning-changers fill the no-scroll
+zone; frequency orders the rest; utilities last.
+
+- **Row 1 — content**: Scope (All · Subs · Substack · My adds · Campaign —
+  provenance only, no group privileged) · Source (only sources present in
+  available ∩ scope, alphabetical, each with the channel's running hype
+  average; a selection that narrows away resets to All with the yellow
+  side-effect fill) · Category (any position in the ordered tag array) ·
+  Domain · Age (≤ 2 days … ≤ 1 year, by publish date).
+- **Pinned, far right, never scrolls — Queued**: `Q shown` / `Q hidden`
+  removes queued nuggets from the list ("already decided").
+- **Row 2 — order**: Group (None · Video) · Sort · ▲▼. Group=Video sets
+  Sort=My_rating as a declared side-effect (yellow until you touch Sort).
+  Sort keys, every one both directions (ascending is the weeding view):
+  **Appeal** (personal_score — a prediction of how much you will like it)
+  · **Coach** (expert_score — the mentor's value-per-minute) · **Broccoli**
+  (the regression residual: the coach's score above what your appeal
+  predicts — good for you, not what you crave; NOT a raw subtraction) ·
+  **Needs-viz** (0–100, does understanding need the screen; nulls last) ·
+  My_rating · YT_views · Duration · Date-pub · Date-add (manual add, else
+  discovery) · Date-dug (when it entered the pile; ascending = expiring
+  soonest) · Date-Q · Date-rev.
+- **Row 3 — judgment + utilities**: Rating (All · Unrated · 5★ · ≥4★ · 3★ ·
+  Pickled 1–2★) · Expired (hidden / shown; re-admits unrated nuggets past
+  their categories' TTL — each wears "expired: <tag> <N>d" naming the tag
+  whose TTL fired) · A− / A+.
+- **Chip fills**: grey = app default; mint = your choice (a value equal to
+  the default reads grey); yellow = a side-effect of another control
+  (decays when you touch this one); greyed = not applicable.
+- **Header count** reads `N listed / M available`: available = rating +
+  expired + hide-queued only, content filters ignored — the ratio shows how
+  much your scope choice is hiding.
+- **Group=Video**: multi-nugget videos under a collapsible header ("X
+  nuggets in Y" with channel, date, hype ±N, reprocess generation, header
+  stars that rate every unrated nugget in bulk, the group Q badge, and a
+  Watch link for the whole video). Groups order by their best nugget under
+  the declared sort; nuggets inside a group keep the declared order.
+  Singletons stay plain cards.
+- **Cards**: headline (tap to expand), channel, date, domain, category
+  chips (primary first), `A<n>` appeal and `C<n>` coach scores, `coach ±N`
+  in Broccoli sort, `viz <n>` when needs_viz ≥ 50, ★n, the Q badge.
+  Expanded: the abstract, rationale, Watch link, stars. Watch links open
+  at the nugget's start, clamped so a link never lands past `duration −
+  30 s` (spec §7: the processor clamps at write time, the viewer clamps for
+  display).
 - **Second-dimension stripe**: each card's left edge is colored by the
-  score the current sort ISN'T showing (mentor score everywhere; your
-  taste score in Stretch sort) — green ≥75, gold ≥85, nothing otherwise —
-  so skimming any sorted list still catches standouts on the other
-  axis. The legend line names the stripe's dimension.
-- Substack nuggets wear a `substack` chip and source-appropriate verbs —
-  **📖 Read now / mark seen** — linking to the post itself; header
-  actions follow suit. Same stars, same meaning.
-- `ops.html` (same key): read-only ops page. **Burn rate** cards lead —
-  each card names the resource AND the consumer: whole pipeline
-  (Supadata cycle), subscriptions (subscribed channels' share after
-  campaign reservations), Claude $ (soft budget), and each campaign
-  cap — used/quota with a pace ratio normalized by elapsed period,
-  blue &lt;0.5× · green ≤1× · yellow ≤1.3× · red &gt;1.3×, tick =
-  exactly on pace. Then per-query campaign yields; channel economics
-  with a sortable **source** column (youtube | substack), $/nugget to
-  5 decimals and $/5★ to 4 (substack costs are magnitudes smaller and
-  still deserve a number), and **nug/item** — the density metric both
-  sources share, since posts have no transcript minutes; lifetime +
-  monthly. Channels processed before 2026-07-25 predate cost logging
-  and show $0. Finally the pipeline flow parameters — every tunable
-  number, live from the `yt_params` config table. Campaigns and
-  parameters are edited in the SQL editor, not here (control GUI
-  later).
+  score the current sort ISN'T showing (coach everywhere; appeal under
+  Coach and Broccoli sorts) — green ≥ 75, gold ≥ 85.
+- Substack nuggets wear a `substack` chip and **📖 Read now** links to the
+  post; no Q badge (posts are read, not watched; needs_viz is null).
+- Campaign nuggets get no special treatment; the legend under their stars
+  carries the reminder that ratings teach the campaign.
+- Cards you rate or queue stay **pinned in place** until the next
+  filter/sort/group change, so acting on a card never yanks it away
+  mid-tap.
 
-Cards you rate or watch stay **pinned in place** (dimmed) until the next
-filter change or reload, so acting on a card never yanks it out of the
-list mid-interaction. Watched-but-unrated cards show a "rate the video to
-close it out" nudge.
+## clips.html — hands-free sequential playback
 
-The header strip shows pipeline status when quiet (month-to-date cost,
-Supadata usage, drift verdict) and turns into an alarm line when something
-needs attention.
+List = queued (Q) nuggets, YouTube only, not pickled. Videos order newest-
+queued first; clips inside a video play in storyline order. A clip runs
+from the nugget's clamped start to the next queued nugget's start in the
+same video, else `start + clip_default_seconds` (a `yt_params` knob, 120 s,
+editable on the ops page), capped at the video's end. **Start** requests a
+screen wake lock and drops a pocket guard (a full-screen overlay that
+swallows touches; press-and-hold 1.5 s unlocks); the IFrame player chains
+clips on the ENDED event; ▶▶ / ◀ skip; tapping a list item jumps. Known
+limits: embedded playback pauses when the screen locks (hence the wake
+lock), and Media Session handlers are best effort — the embed's own media
+session may win on some devices. Acceptance test (spec §10.2): one tap on
+Start must carry into the second clip with no touch, on the phone.
+
+The header strip of the viewer shows pipeline status when quiet (month-to-
+date cost, Supadata usage, drift verdict) and turns into an alarm line when
+something needs attention.
+
+`ops.html` (same key): read-only ops page — burn-rate cards that name the
+resource AND the consumer, pace ratios (blue <0.5× · green ≤1× · yellow
+≤1.3× · red >1.3×), per-query campaign yields, channel economics with a
+sortable source column, and every tunable number live from `yt_params`.
 
 ## Deploying
 
 Push to `main`; GitHub Pages serves the repo root. The API base URL is
-hardcoded in `index.html`.
+hardcoded in `index.html`, `clips.html`, and `ops.html`.

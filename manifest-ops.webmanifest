@@ -1,0 +1,15 @@
+{
+  "id": "./ops.html",
+  "name": "Nugget-ops",
+  "short_name": "N-ops",
+  "description": "Pipeline economics, limits, sources, and live knobs.",
+  "start_url": "./ops.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#101114",
+  "theme_color": "#101114",
+  "icons": [
+    { "src": "icon192-ops.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon512-ops.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "./index.html",
+  "name": "Nugget-viewer",
+  "short_name": "N-view",
+  "description": "Review nuggets: filter, sort, rate abstracts, queue clips.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#101114",
+  "theme_color": "#101114",
+  "icons": [
+    { "src": "icon192-view.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon512-view.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
