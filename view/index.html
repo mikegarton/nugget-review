@@ -280,8 +280,7 @@ function judgmentPass(n) {
 }
 
 function contentPass(n) {
-  return scopePass(n) &&
-    (!state.src || n.channelLabel === state.src) &&
+  return scopePass(n) && sourcePass(n) &&
     (!state.cat || categoriesOf(n).includes(state.cat)) &&
     (!state.domain || n.domain === state.domain) &&
     (!state.age || Date.now() - new Date(n.publishedAt || n.created_at) <= state.age * 86400000);
@@ -314,26 +313,64 @@ function visible() {
 }
 
 // ---- controls --------------------------------------------------------------
-// One dropdown control: label above, options, fill class by origin.
+// One dropdown control: label above, options, fill class by origin. A def is
+// [value, label] or {group, items:[[value,label],...]} (native optgroup —
+// the Source dropdown under Scope=Campaign uses one group per campaign).
+function optionHtml([val, lab], value) {
+  return '<option value="' + esc(val) + '"' + (String(val) === String(value) ? " selected" : "") + '>' + lab + "</option>";
+}
 function selectHtml(id, label, defs, value, fill, extraClass) {
   return '<span class="ctl"><label for="' + id + '">' + label + '</label>' +
     '<select id="' + id + '" class="' + (fill || "") + (extraClass ? " " + extraClass : "") + '">' +
-    defs.map(([val, lab]) => '<option value="' + esc(val) + '"' + (String(val) === String(value) ? " selected" : "") + '>' + lab + "</option>").join("") +
+    defs.map(d => d.group != null
+      ? '<optgroup label="' + esc(d.group) + '">' + d.items.map(o => optionHtml(o, value)).join("") + "</optgroup>"
+      : optionHtml(d, value)).join("") +
     "</select></span>";
 }
+function flatVals(defs) { return defs.flatMap(d => d.group != null ? d.items.map(o => o[0]) : [d[0]]); }
 function fillFor(prop) {
   return String(state[prop] ?? "") !== String(DEFAULTS[prop] ?? "") ? "user-set" : "";
 }
 function sourceDefs() {
+  const pool = all.filter(n => judgmentPass(n) && scopePass(n));
+  if (state.scope === "campaign") {
+    // Under Scope=Campaign the "particular source" of a discovered video is
+    // the campaign and the search phrase that found it, not the channel
+    // (Mike, 2026-08-23). One optgroup per campaign: "all of <campaign>"
+    // first, then its queries present in the pool. Values: c:<id>, q:<id>|<phrase>.
+    const byCamp = new Map();
+    for (const n of pool) {
+      if (n.campaignId == null) continue;
+      const key = n.campaignId;
+      if (!byCamp.has(key)) byCamp.set(key, { name: n.campaignName || key, queries: new Set() });
+      if (n.campaignQuery) byCamp.get(key).queries.add(n.campaignQuery);
+    }
+    return [...byCamp.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name)).map(([id, c]) => ({
+      group: c.name,
+      items: [["c:" + id, "all of " + esc(c.name)]].concat(
+        [...c.queries].sort((a, b) => a.localeCompare(b)).map(q => ["q:" + id + "|" + q, "“" + esc(q) + "”"])),
+    }));
+  }
   // Vocabulary = sources present in available ∩ selected scope (alphabetical
   // — a lookup aid inside a long list), each with the channel's running hype
   // average, the weeding signal.
-  const opts = [...new Set(all.filter(n => judgmentPass(n) && scopePass(n))
-    .map(n => n.channelLabel).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const opts = [...new Set(pool.map(n => n.channelLabel).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   return opts.map(vv => {
     const h = channelHype.get(vv);
     return [vv, esc(h == null ? vv : vv + " (" + (h > 0 ? "+" : "") + Number(h).toFixed(1) + ")")];
   });
+}
+// Source match: channel label, or under Scope=Campaign a campaign (c:<id>)
+// or one campaign query (q:<id>|<phrase>).
+function sourcePass(n) {
+  const s = state.src;
+  if (!s) return true;
+  if (s.startsWith("c:")) return n.campaignId === s.slice(2);
+  if (s.startsWith("q:")) {
+    const bar = s.indexOf("|");
+    return n.campaignId === s.slice(2, bar) && n.campaignQuery === s.slice(bar + 1);
+  }
+  return n.channelLabel === s;
 }
 
 function renderControls() {
@@ -341,7 +378,7 @@ function renderControls() {
   const srcDefs = sourceDefs();
   // Scope's declared side-effect on Source: a selection that narrowed away
   // resets to All and takes the yellow fill until the user touches Source.
-  if (state.src && !srcDefs.some(([v]) => v === state.src)) { state.src = ""; state.srcOrigin = "side_effect"; save(); }
+  if (state.src && !flatVals(srcDefs).includes(state.src)) { state.src = ""; state.srcOrigin = "side_effect"; save(); }
   const srcFill = srcDefs.length === 0 ? "na" : state.srcOrigin === "side_effect" ? "side-effect" : fillFor("src");
   const domains = [...new Set(all.map(n => n.domain).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   document.getElementById("row1").innerHTML =
@@ -457,6 +494,16 @@ function grouped(v) {
   return out.join("");
 }
 
+// Campaign provenance chips (Mike, 2026-08-23): the campaign and the search
+// phrase that found the video, beside the other provenance chips.
+function campaignChips(n) {
+  if (n.campaignId == null) return "";
+  const q = n.campaignQuery || "";
+  const short = q.length > 40 ? q.slice(0, 38) + "…" : q;
+  return '<span class="chip" title="campaign">campaign: ' + esc(n.campaignName || n.campaignId) + "</span>" +
+    (q ? '<span class="chip" title="search phrase that found this video: ' + esc(q) + '">q: “' + esc(short) + "”</span>" : "");
+}
+
 function qBadge(on, half, onclick, title) {
   return '<button class="qd' + (on ? " on" : half ? " half" : "") + '" title="' + title + '" onclick="' + onclick + '">Q</button>';
 }
@@ -481,7 +528,7 @@ function ghead(n, g) {
     '<div class="gmeta">' +
       "<b>" + esc(n.channelLabel) + "</b>" +
       "<span>" + fmtD(n.publishedAt || n.created_at) + "</span>" +
-      '<span class="chip">' + g.length + " nuggets" + dur + "</span>" + hype + gen +
+      '<span class="chip">' + g.length + " nuggets" + dur + "</span>" + hype + gen + campaignChips(n) +
       '<div class="stars gstars">' + [1,2,3,4,5].map(k =>
         '<button title="' + k + ' — ' + SCALE[k] + ' (rates every unrated nugget; re-tap corrects a uniformly rated group)" class="' +
           (gmin >= k ? "lit" : "") + '" onclick="rateAll(\'' + n.video_id + '\',' + k + ')">&#9733;</button>'
@@ -564,6 +611,7 @@ function card(n) {
       (isPost ? '<span class="chip">substack</span>' : "") +
       (n.sourceKey && n.sourceKey.endsWith("_manual")
         ? '<span class="chip" style="color:var(--accent)">manual add</span>' : "") +
+      campaignChips(n) +
       '<span class="score a" title="Appeal">A' + Math.round(n.personal_score) + "</span>" +
       '<span class="score c" title="Coach">C' + Math.round(n.expert_score) + "</span>" + res +
       (n.needsViz != null && n.needsViz >= 50
@@ -700,6 +748,8 @@ async function load() {
     manualAddedAt: n.yt_videos?.manual_added_at || null,
     generation: n.yt_videos?.generation ?? 1,
     contentUrl: n.yt_videos?.url || null,
+    campaignName: n.yt_videos?.yt_campaigns?.name ?? null,
+    campaignQuery: (data.campaign_queries || {})[n.video_id] ?? null,
     publishedAt: n.yt_videos?.published_at,
     durationSeconds: n.yt_videos?.duration_seconds ?? null,
     viewCount: n.yt_videos?.view_count ?? null,

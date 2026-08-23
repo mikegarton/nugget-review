@@ -95,9 +95,11 @@ zone; frequency orders the rest; utilities last.
   `yt_subscribed`) = your subscribed YouTube channels, neither
   campaign-found nor manually added) · Source (only sources present in
   available ∩ scope, alphabetical, each with the channel's running hype
-  average; a selection that narrows away resets to All with the yellow
-  side-effect fill) · Category (any position in the ordered tag array) ·
-  Domain · Age (≤ 2 days … ≤ 1 year, by publish date).
+  average; under Scope = Campaign it lists the campaigns instead, each
+  with the search phrases that found videos — "all of <campaign>" then
+  the phrases; a selection that narrows away resets to All with the
+  yellow side-effect fill) · Category (any position in the ordered tag
+  array) · Domain · Age (≤ 2 days … ≤ 1 year, by publish date).
 - **Pinned, far right, never scrolls — Queued**: `Q shown` / `Q hidden`
   removes queued nuggets from the list ("already decided").
 - **Row 2 — order**: Group (None · Video) · Sort · ▲▼. Group=Video sets
@@ -128,8 +130,10 @@ zone; frequency orders the rest; utilities last.
   the declared sort; nuggets inside a group keep the declared order.
   Singletons stay plain cards.
 - **Cards**: headline (tap to expand), channel, date, domain, category
-  chips (primary first), `A<n>` appeal and `C<n>` coach scores, `coach ±N`
-  in Broccoli sort, `viz <n>` when needs_viz ≥ 50, ★n, the Q badge.
+  chips (primary first), provenance chips (`substack`, `manual add`, and
+  for campaign nuggets `campaign: <name>` + `q: “<search phrase>”`), `A<n>`
+  appeal and `C<n>` coach scores, `coach ±N` in Broccoli sort, `viz <n>`
+  when needs_viz ≥ 50, ★n, the Q badge.
   Expanded: the abstract, rationale, Watch link, stars. Watch links open
   at the nugget's start, clamped so a link never lands past `duration −
   30 s` (spec §7: the processor clamps at write time, the viewer clamps for
