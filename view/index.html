@@ -175,6 +175,7 @@ const DEFAULTS = { scope: "", src: "", cat: "", domain: "", age: "", ratef: "",
   expired: false, hideQ: false, sort: "appeal", dir: "desc", sortOrigin: "user",
   group: "", zoom: 1 };
 let all = [], slope = 0, intercept = 0;
+let byId = new Map(); // id -> nugget (bodies arrive by id)
 let catTtls = {}, defaultTtl = 180, catList = [];
 let manualEmpty = [];
 let channelHype = new Map();
@@ -289,11 +290,68 @@ function judgmentPass(n) {
   return true;
 }
 
+function catPass(n) { return !state.cat || categoriesOf(n).includes(state.cat); }
+function domPass(n) { return !state.domain || n.domain === state.domain; }
+function ageDays(n) { return (Date.now() - new Date(n.publishedAt || n.created_at)) / 86400000; }
+function agePass(n) { return !state.age || ageDays(n) <= Number(state.age); }
 function contentPass(n) {
-  return scopePass(n) && sourcePass(n) &&
-    (!state.cat || categoriesOf(n).includes(state.cat)) &&
-    (!state.domain || n.domain === state.domain) &&
-    (!state.age || Date.now() - new Date(n.publishedAt || n.created_at) <= state.age * 86400000);
+  return scopePass(n) && sourcePass(n) && catPass(n) && domPass(n) && agePass(n);
+}
+// Scope match for one value (mirror of scopePass's switch, for counting).
+function scopeMatch(n, val) {
+  const manual = !!(n.sourceKey && n.sourceKey.endsWith("_manual"));
+  switch (val) {
+    case "yt_subscribed": return n.source === "youtube" && n.campaignId == null && !manual;
+    case "substack": return n.source === "substack";
+    case "manual":   return manual;
+    case "campaign": return n.campaignId != null;
+    default:         return true;
+  }
+}
+
+// Per-option counts ("facets", Mike 2026-08-23): each option shows how many
+// rows you would get by choosing it, given every OTHER current filter. One
+// pass over the index per render; the full metadata index is local, so no
+// server call. Source ignores the scope filter's downstream (it is rebuilt
+// from scope anyway); Scope ignores Source (Source depends on Scope).
+function facetCounts() {
+  const F = { scope: new Map(), source: new Map(), cat: new Map(), domain: new Map(), age: new Map(), rating: new Map() };
+  const bump = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+  for (const n of all) {
+    const j = judgmentPass(n);
+    const jx = (state.expired || !isExpired(n)) && (!state.hideQ || !queued(n)); // judgment minus the rating dropdown
+    const sc = scopePass(n), sr = sourcePass(n), ca = catPass(n), dm = domPass(n), ag = agePass(n);
+    if (j && ca && dm && ag) {
+      for (const [val] of SCOPES) if (scopeMatch(n, val)) bump(F.scope, val);
+    }
+    if (j && sc && ca && dm && ag) {
+      bump(F.source, "");
+      if (state.scope === "campaign") {
+        if (n.campaignId != null) { bump(F.source, "c:" + n.campaignId); if (n.campaignQuery) bump(F.source, "q:" + n.campaignId + "|" + n.campaignQuery); }
+      } else if (n.channelLabel) bump(F.source, n.channelLabel);
+    }
+    if (j && sc && sr && dm && ag) { bump(F.cat, ""); for (const c of categoriesOf(n)) bump(F.cat, c); }
+    if (j && sc && sr && ca && ag) { bump(F.domain, ""); if (n.domain) bump(F.domain, n.domain); }
+    if (j && sc && sr && ca && dm) { bump(F.age, ""); const d = ageDays(n); for (const [val] of AGES) if (val && d <= Number(val)) bump(F.age, val); }
+    if (jx && sc && sr && ca && dm && ag) {
+      const r = n.rating;
+      if (pickled(n)) bump(F.rating, "pickled");
+      else {
+        bump(F.rating, "");
+        if (r == null) bump(F.rating, "unrated");
+        if (r === 5) bump(F.rating, "5");
+        if (r >= 4) bump(F.rating, "4");
+        if (r === 3) bump(F.rating, "3");
+      }
+    }
+  }
+  return F;
+}
+function withCount(defs, counts) {
+  const fmt = (k) => " (" + (counts.get(k) || 0).toLocaleString() + ")";
+  return defs.map(d => d.group != null
+    ? { group: d.group, items: d.items.map(([v, l]) => [v, l + fmt(v)]) }
+    : [d[0], d[1] + fmt(d[0])]);
 }
 
 // THE declared sort (P-002): one key, one direction, nulls last both ways,
@@ -391,12 +449,13 @@ function renderControls() {
   if (state.src && !flatVals(srcDefs).includes(state.src)) { state.src = ""; state.srcOrigin = "side_effect"; save(); }
   const srcFill = srcDefs.length === 0 ? "na" : state.srcOrigin === "side_effect" ? "side-effect" : fillFor("src");
   const domains = [...new Set(all.map(n => n.domain).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const F = facetCounts();
   document.getElementById("row1").innerHTML =
-    selectHtml("cScope", "Scope", SCOPES, state.scope, fillFor("scope")) +
-    selectHtml("cSrc", "Source", [["","All"]].concat(srcDefs), state.src, srcFill) +
-    selectHtml("cCat", "Category", [["","All"]].concat(catList.map(c => [c, esc(c)])), state.cat, fillFor("cat")) +
-    selectHtml("cDomain", "Domain", [["","All"]].concat(domains.map(d => [d, esc(d)])), state.domain, fillFor("domain")) +
-    selectHtml("cAge", "Age", AGES, state.age, fillFor("age"));
+    selectHtml("cScope", "Scope", withCount(SCOPES, F.scope), state.scope, fillFor("scope")) +
+    selectHtml("cSrc", "Source", withCount([["","All"]].concat(srcDefs), F.source), state.src, srcFill) +
+    selectHtml("cCat", "Category", withCount([["","All"]].concat(catList.map(c => [c, esc(c)])), F.cat), state.cat, fillFor("cat")) +
+    selectHtml("cDomain", "Domain", withCount([["","All"]].concat(domains.map(d => [d, esc(d)])), F.domain), state.domain, fillFor("domain")) +
+    selectHtml("cAge", "Age", withCount(AGES, F.age), state.age, fillFor("age"));
   // Row 2 — order: Group, Sort, Dir (cause left of effect; Group writes
   // Sort's default, so its yellow side-effect appears downstream).
   const sortFill = state.sortOrigin === "side_effect" ? "side-effect" : fillFor("sort");
@@ -407,7 +466,7 @@ function renderControls() {
       '" title="ascending is the weeding view">' + (state.dir === "asc" ? "▲ asc" : "▼ desc") + "</button></span>";
   // Row 3 — judgment + utilities: Rating, Expired, gap, zoom pair.
   document.getElementById("row3").innerHTML =
-    selectHtml("cRate", "Rating", RATEFS, state.ratef, fillFor("ratef")) +
+    selectHtml("cRate", "Rating", withCount(RATEFS, F.rating), state.ratef, fillFor("ratef")) +
     '<span class="ctl"><label for="cExp">Expired</label><button id="cExp" class="' + (state.expired ? "user-set" : "") +
       '" title="re-admit unrated nuggets past their categories\' TTL">' + (state.expired ? "shown" : "hidden") + "</button></span>" +
     '<span class="gap"></span>' +
@@ -459,10 +518,10 @@ function render() {
   if (!v.length) { list.innerHTML = me + '<div class="empty">Nothing here.</div>'; return; }
   // Blocks = {html, n}: a card (n=1) or a whole video group (n = its size);
   // paint blocks until paintLimit nuggets are covered, then a sentinel.
-  const blocks = state.group === "video" ? grouped(v) : v.map(n => ({ html: card(n), n: 1 }));
-  const out = [];
+  const blocks = state.group === "video" ? grouped(v) : v.map(n => ({ html: card(n), n: 1, ids: [n.id] }));
+  const out = [], painted = [];
   let covered = 0, i = 0;
-  for (; i < blocks.length && covered < paintLimit; i++) { out.push(blocks[i].html); covered += blocks[i].n; }
+  for (; i < blocks.length && covered < paintLimit; i++) { out.push(blocks[i].html); covered += blocks[i].n; painted.push(...blocks[i].ids); }
   const rest = v.length - covered;
   if (rest > 0) out.push('<div id="more" class="empty">' + rest + " more below — keep scrolling</div>");
   list.innerHTML = me + out.join("");
@@ -471,7 +530,47 @@ function render() {
     if (io) io.observe(s);
     else s.onclick = () => { paintLimit += WINDOW; render(); }; // no observer: tap to load
   }
+  // Bodies by window: prefetch the painted cards' bodies and the next
+  // window's, so a tap opens instantly at reading pace.
+  const ahead = [];
+  for (let k = i, c = 0; k < blocks.length && c < WINDOW; k++) { ahead.push(...blocks[k].ids); c += blocks[k].n; }
+  ensureBodies(painted.concat(ahead));
 }
+
+// ---- bodies (content + rationale) arrive per window, not with the index --
+const bodiesInFlight = new Set();
+async function ensureBodies(ids, force) {
+  const want = [...new Set(ids)].filter(id => {
+    const n = byId.get(id);
+    return n && (force || (n.content == null && !bodiesInFlight.has(id)));
+  });
+  if (!want.length) return;
+  for (const id of want) bodiesInFlight.add(id);
+  for (let k = 0; k < want.length; k += 100) {
+    const chunk = want.slice(k, k + 100);
+    try {
+      const res = await fetch(BASE + "/bodies?key=" + encodeURIComponent(KEY), {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ids: chunk }),
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      let openArrived = false;
+      for (const [id, b] of Object.entries(data.bodies || {})) {
+        const n = byId.get(id);
+        if (!n) continue;
+        n.content = b.content ?? ""; n.rationale = b.rationale ?? null;
+        if (id === openId) openArrived = true;
+      }
+      if (openArrived) render();
+    } catch (e) {
+      // Leave them unloaded: the expanded card shows "tap to retry".
+    } finally {
+      for (const id of chunk) bodiesInFlight.delete(id);
+    }
+  }
+}
+function retryBody(id) { ensureBodies([id], true).then(() => render()); }
 
 // Manual adds analyzed with ZERO nuggets — shown because you asked (the
 // only honest feedback signal on the extractor). Manual sources only.
@@ -510,10 +609,11 @@ function grouped(v) {
     if (done.has(n.video_id)) continue;
     done.add(n.video_id);
     const g = byVid.get(n.video_id);
-    if (g.length === 1) { out.push({ html: card(n), n: 1 }); continue; }
+    if (g.length === 1) { out.push({ html: card(n), n: 1, ids: [n.id] }); continue; }
     out.push({
       html: ghead(n, g) + (collapsed.has(n.video_id) ? "" : '<div class="gcards">' + g.map(card).join("") + "</div>"),
       n: g.length,
+      ids: g.map(x => x.id),
     });
   }
   return out;
@@ -626,7 +726,7 @@ function card(n) {
   const ex = expiry(n);
   const toast = toasts.get(n.id);
   return '<div class="card' + (open ? " open" : "") + stripeClass(n) + '">' +
-    '<div class="hl" onclick="toggle(\'' + n.id + '\')">' + esc(n.headline || n.content.slice(0, 110)) + "</div>" +
+    '<div class="hl" onclick="toggle(\'' + n.id + '\')">' + esc(n.headline || (n.content || "").slice(0, 110) || "(untitled nugget)") + "</div>" +
     '<div class="meta">' +
       "<b>" + esc(n.channelLabel) + "</b>" +
       "<span>" + fmtD(n.publishedAt || n.created_at) + "</span>" +
@@ -647,8 +747,12 @@ function card(n) {
     "</div>" +
     (toast ? '<div class="toast">' + toast + "</div>" : "") +
     '<div class="body">' +
-      '<div class="content">' + esc(n.content) + "</div>" +
-      (n.rationale ? '<div class="rationale">' + esc(n.rationale) + "</div>" : "") +
+      (n.content == null
+        ? (bodiesInFlight.has(n.id)
+          ? '<div class="content" style="color:var(--faint)">loading…</div>'
+          : '<div class="content" style="color:var(--faint);cursor:pointer" onclick="retryBody(\'' + n.id + '\')">body not loaded — tap to retry</div>')
+        : '<div class="content">' + esc(n.content) + "</div>" +
+          (n.rationale ? '<div class="rationale">' + esc(n.rationale) + "</div>" : "")) +
       '<div class="actions">' +
         '<a class="watch" target="_blank" rel="noopener" href="' + link + '">' + watchLabel + "</a>" +
         '<div class="stars">' + [1,2,3,4,5].map(k =>
@@ -666,7 +770,11 @@ function rnote(n) {
   return pre + "&#9733;" + n.rating + " — " + SCALE[n.rating];
 }
 
-function toggle(id) { openId = openId === id ? null : id; render(); }
+function toggle(id) {
+  openId = openId === id ? null : id;
+  if (openId) ensureBodies([openId]); // normally already prefetched with its window
+  render();
+}
 
 // A failed save must never look like a successful one.
 async function post(path, body) {
@@ -789,6 +897,7 @@ async function load() {
       reviewedAt: n.reviewed_at || null,
     };
   });
+  byId = new Map(all.map(n => [n.id, n]));
   channelHype = new Map((data.channel_hype || []).map(c => [c.label, c.avg_hype]));
   regress();
   // Category vocabulary: server-known tags first (TTL seed order), then
