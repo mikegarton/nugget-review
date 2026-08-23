@@ -158,7 +158,12 @@ zone; frequency orders the rest; utilities last.
 Tabs **Audio (n) · Video (n) · Read (n)**. Audio = nuggets on the A list,
 YouTube only, not pickled; Video = V-list links (at the nugget's start;
 the sync mirrors these videos to the YouTube watch playlist); Read = R-list
-post links. Audio playback: Videos order newest-
+post links with an on-device **read-aloud** (tier 1 TTS, 2026-08-23: the
+phone's own voices via the Web Speech API — voice and speed pickers, pause,
+skip-paragraph, posts read on in list order; the post text comes from
+`GET /post?id=`; speech may stop when the screen locks — a cloud neural
+voice rendered to audio files is the tier-2 upgrade if delivery impedes
+learning). Audio playback: Videos order newest-
 queued first; clips inside a video play in storyline order. A clip runs
 from the nugget's clamped start to the next queued nugget's start in the
 same video, else `start + clip_default_seconds` (a `yt_params` knob, 120 s,

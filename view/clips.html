@@ -77,7 +77,18 @@
     <div class="list" id="listVideo"></div>
   </section>
   <section id="secRead" style="display:none">
-    <div class="note">Your reading list — posts and articles.</div>
+    <div class="note">Your reading list — posts and articles. ▶ reads a post aloud with this phone's own voice (on-device TTS, tier 1); posts play on in list order.</div>
+    <div class="bar" id="ttsBar">
+      <button id="ttsPlay" class="primary" title="read the list aloud from the first post">&#9654; Read list</button>
+      <button id="ttsPause" title="pause / resume">&#10074;&#10074;</button>
+      <button id="ttsSkip" title="next paragraph">&#9654;&#9654;</button>
+      <button id="ttsStop" title="stop">&#9632;</button>
+      <select id="ttsVoice" title="voice (from this phone's installed voices)"></select>
+      <select id="ttsRate" title="speed">
+        <option value="0.85">0.85×</option><option value="1" selected>1×</option><option value="1.15">1.15×</option><option value="1.3">1.3×</option><option value="1.5">1.5×</option>
+      </select>
+    </div>
+    <div id="ttsNow" class="note"></div>
     <div class="list" id="listRead"></div>
   </section>
 </main>
@@ -174,7 +185,9 @@ function renderOtherLists() {
   const fmtV = (c) => '<div class="item"><div class="h"><a target="_blank" rel="noopener" href="https://www.youtube.com/watch?v=' + esc(c.videoId) +
     (c.start ? "&t=" + c.start + "s" : "") + '">&#9654; ' + esc(c.headline) + "</a></div>" +
     '<div class="m"><span>' + esc(c.channel) + "</span><span>" + esc(c.title) + "</span>" + (c.start ? "<span>at " + fmtT(c.start) + "</span>" : "") + "</div></div>";
-  const fmtR = (c) => '<div class="item"><div class="h"><a target="_blank" rel="noopener" href="' + esc(c.url || "#") + '">&#128214; ' + esc(c.headline) + "</a></div>" +
+  const fmtR = (c, i) => '<div class="item' + (i === ttsIdx ? " now" : "") + '"><div class="h">' +
+    '<button class="tab" style="padding:2px 9px;margin-right:6px" title="read this post aloud" onclick="ttsStart(' + i + ')">&#9654;</button>' +
+    '<a target="_blank" rel="noopener" href="' + esc(c.url || "#") + '">&#128214; ' + esc(c.headline) + "</a></div>" +
     '<div class="m"><span>' + esc(c.channel) + "</span><span>" + esc(c.title) + "</span></div></div>";
   document.getElementById("listVideo").innerHTML = videoItems.length ? videoItems.map(fmtV).join("") : '<div class="empty">Nothing on the video list — tap V on a nugget in the viewer.</div>';
   document.getElementById("listRead").innerHTML = readItems.length ? readItems.map(fmtR).join("") : '<div class="empty">Nothing on the reading list — tap R on a post in the viewer.</div>';
@@ -192,6 +205,81 @@ function showTab(which) {
 document.getElementById("tabAudio").onclick = () => showTab("Audio");
 document.getElementById("tabVideo").onclick = () => showTab("Video");
 document.getElementById("tabRead").onclick = () => showTab("Read");
+
+// ---- Read tab: on-device text-to-speech (tier 1, Mike "go tts-1" 2026-08-23) ----
+// The phone's own voices (Web Speech API). Posts are read in list order;
+// each post is split into sentence-sized utterances (Chrome cuts long
+// utterances off), so pause / skip-paragraph / stop work at natural seams.
+// Voice and speed persist on the device. Known limits of tier 1: speech
+// can stop when the screen locks or the tab backgrounds (the wake lock
+// helps while the screen is on); delivery is the phone's, not a narrator's.
+let ttsIdx = -1, ttsChunks = [], ttsPos = 0, ttsActive = false, ttsUtter = null;
+const synth = ("speechSynthesis" in window) ? window.speechSynthesis : null;
+function ttsVoices() {
+  const sel = document.getElementById("ttsVoice");
+  if (!synth) { sel.innerHTML = '<option value="">no speech on this browser</option>'; return; }
+  const vs = synth.getVoices().filter(v => /^en/i.test(v.lang));
+  const saved = localStorage.getItem("tts_voice") || "";
+  sel.innerHTML = vs.map(v => '<option value="' + esc(v.name) + '"' + (v.name === saved ? " selected" : "") + ">" + esc(v.name.replace(/^Google\s+/, "")) + (v.localService ? "" : " (online)") + "</option>").join("") || '<option value="">default voice</option>';
+}
+if (synth) { ttsVoices(); synth.onvoiceschanged = ttsVoices; }
+document.getElementById("ttsVoice").onchange = (e) => localStorage.setItem("tts_voice", e.target.value);
+document.getElementById("ttsRate").value = localStorage.getItem("tts_rate") || "1";
+document.getElementById("ttsRate").onchange = (e) => localStorage.setItem("tts_rate", e.target.value);
+
+// Speech-ready text: drop inline "(https://…)" link targets and markdown
+// noise, keep paragraph breaks as seams.
+function speakable(text) {
+  return String(text || "")
+    .replace(/\s*\((https?:\/\/[^)]+)\)/g, "")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/[#*_>`|]+/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .split(/\n\s*\n|\n/).map(p => p.trim()).filter(Boolean)
+    .flatMap(p => p.match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g) || [p])
+    .map(s => s.trim()).filter(s => s.length > 1);
+}
+async function ttsStart(i) {
+  if (!synth) { alert("This browser has no speech synthesis."); return; }
+  if (i < 0 || i >= readItems.length) { ttsStopAll("done — every post on the list was read"); return; }
+  synth.cancel();
+  ttsIdx = i; ttsPos = 0; ttsActive = true; renderOtherLists();
+  const item = readItems[i];
+  document.getElementById("ttsNow").textContent = "loading: " + item.headline;
+  let post;
+  try {
+    const res = await fetch(BASE + "/post?key=" + encodeURIComponent(KEY) + "&id=" + encodeURIComponent(item.videoId));
+    post = await res.json();
+  } catch (e) { document.getElementById("ttsNow").textContent = "could not load the post text"; return; }
+  ttsChunks = [post.title || item.title].concat(speakable(post.text));
+  if (ttsChunks.length < 2) { document.getElementById("ttsNow").textContent = "no stored text for this post — opening the link is the fallback"; ttsStart(i + 1); return; }
+  requestWake();
+  ttsNext();
+}
+function ttsNext() {
+  if (!ttsActive) return;
+  if (ttsPos >= ttsChunks.length) { ttsStart(ttsIdx + 1); return; }
+  const text = ttsChunks[ttsPos++];
+  const u = new SpeechSynthesisUtterance(text);
+  const want = document.getElementById("ttsVoice").value;
+  const v = synth.getVoices().find(x => x.name === want);
+  if (v) u.voice = v;
+  u.rate = Number(document.getElementById("ttsRate").value) || 1;
+  u.onend = () => { if (ttsActive && ttsUtter === u) ttsNext(); };
+  u.onerror = (e) => { if (e.error !== "interrupted" && e.error !== "canceled") setTimeout(() => ttsActive && ttsNext(), 200); };
+  ttsUtter = u;
+  document.getElementById("ttsNow").textContent = "reading " + (ttsIdx + 1) + "/" + readItems.length + " · " + ttsPos + "/" + ttsChunks.length + " — " + text.slice(0, 90);
+  synth.speak(u);
+}
+function ttsStopAll(msg) {
+  ttsActive = false; if (synth) synth.cancel(); ttsIdx = -1; ttsChunks = []; ttsPos = 0;
+  document.getElementById("ttsNow").textContent = msg || "";
+  releaseWake(); renderOtherLists();
+}
+document.getElementById("ttsPlay").onclick = () => ttsStart(0);
+document.getElementById("ttsPause").onclick = () => { if (!synth) return; if (synth.paused) synth.resume(); else if (synth.speaking) synth.pause(); };
+document.getElementById("ttsSkip").onclick = () => { if (!synth || !ttsActive) return; ttsUtter = null; synth.cancel(); ttsNext(); };
+document.getElementById("ttsStop").onclick = () => ttsStopAll("stopped");
 
 function renderList() {
   renderOtherLists();
