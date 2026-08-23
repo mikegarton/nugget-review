@@ -150,7 +150,9 @@
 <header>
   <div class="chips" id="row1"></div>
   <div class="chips" id="row2"></div>
-  <div class="chips" id="row3"></div>
+  <!-- Apply is PINNED at row 3's left when a load is pending (Mike,
+       2026-08-23): the rest of the row scrolls UNDER it. -->
+  <div class="bar"><span id="applySlot" style="flex:none"></span><div class="chips" id="row3"></div></div>
   <div id="count"></div>
   <div id="status"></div>
   <div id="pbar"></div>
@@ -536,7 +538,7 @@ function renderControls() {
   // left of Rating, red border; visible only while a load is pending (Scope
   // or Source changed, or nothing loaded yet); gone once Apply has run.
   const applyN = selectionCount();
-  const applyHtml = !pending ? "" : '<span class="ctl"><label for="apply">Load</label>' +
+  document.getElementById("applySlot").innerHTML = !pending ? "" : '<span class="ctl"><label for="apply">Load</label>' +
     '<button id="apply" class="apply" title="load this scope and source">' +
     (loading ? "loading…" : "Apply" + (applyN != null ? " — " + Number(applyN).toLocaleString() + (applyN === 1 ? " nugget" : " nuggets") : "")) + "</button></span>";
   document.getElementById("row1").innerHTML =
@@ -560,7 +562,6 @@ function renderControls() {
   // what it did): nuggets you marked Q are either included in the list or
   // hidden from it; the clips page / playlist remain the queue view.
   document.getElementById("row3").innerHTML =
-    applyHtml +
     selectHtml("cRate", "Rating", withCount(RATEFS, F.rating), state.ratef, fillFor("ratef")) +
     '<span class="ctl"><label for="cExp">Expired</label><button id="cExp" class="' + (state.expired ? "user-set" : "") +
       '" title="re-admit unrated nuggets past their categories\' TTL">' + (state.expired ? "shown" : "hidden") + "</button></span>" +
@@ -627,7 +628,12 @@ function render() {
     " · edge stripe = " + (stripeDim() === "appeal" ? "appeal" : "coach") + " score (green 75+, gold 85+)";
   const list = document.getElementById("list");
   const me = manualEmptyHtml();
-  if (!v.length) { list.innerHTML = me + '<div class="empty">Nothing here.</div>'; return; }
+  if (!v.length) {
+    list.innerHTML = me + '<div class="empty">' + (applyPending()
+      ? "Selection not loaded yet — tap the red Apply at the left of row 3."
+      : "Nothing here.") + "</div>";
+    return;
+  }
   // Blocks = {html, n}: a card (n=1) or a whole video group (n = its size);
   // paint blocks until paintLimit nuggets are covered, then a sentinel.
   const blocks = state.group === "video" ? grouped(v) : v.map(n => ({ html: card(n), n: 1, ids: [n.id] }));
