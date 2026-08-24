@@ -346,23 +346,37 @@ function scopePass(n) {
 // Default view: NOT pickled AND NOT expired; pickled is reachable ONLY via
 // Rating -> Pickled (ruling 1a); Expired=shown re-admits expired only.
 function listMode() { return ["audio", "video", "read"].includes(state.listed) ? state.listed : null; }
-function judgmentPass(n) {
+function ratingFilterPass(n) {
   const r = state.ratef;
   if (r === "pickled") return pickled(n);
-  if (pickled(n)) return false;
   if (r === "keepers" && !n.keeperAt) return false;
   if (r === "unrated" && n.rating != null) return false;
   if (r === "5" && n.rating !== 5) return false;
   if (r === "4" && !(n.rating >= 4)) return false;
   if (r === "3" && n.rating !== 3) return false;
+  return true;
+}
+function judgmentPass(n) {
+  const lm = listMode();
+  if (lm) {
+    // Option b (Mike "go b", 2026-08-23; principle prn_fd31f79e-0a17-40bc-
+    // b7d7-1dc1b029277e): in a list MODE the list wins visibility — a
+    // listed item shows even if pickled or expired (you listed it
+    // deliberately; the card still wears its ★1/★2). Played and an explicit
+    // Rating filter still apply.
+    if (n.queueList !== lm) return false;
+    if (!state.played && n.playedAt) return false;
+    return ratingFilterPass(n);
+  }
+  if (state.ratef === "pickled") return pickled(n);
+  if (pickled(n)) return false;
+  if (!ratingFilterPass(n)) return false;
   if (!state.expired && isExpired(n)) return false;
   if (!state.played && n.playedAt) return false;
-  // Listed (§13.2): hidden drops listed items; a list value keeps ONLY that
-  // list (ride-along extras become visible here and only here).
-  const lm = listMode();
+  // Listed (§13.2): hidden drops listed items; extras (ride-along rows
+  // outside the loaded scope) appear only in list modes.
   if (state.listed === "hidden" && queued(n)) return false;
-  if (lm && n.queueList !== lm) return false;
-  if (!lm && n.extra) return false;
+  if (n.extra) return false;
   return true;
 }
 
@@ -398,8 +412,9 @@ function facetCounts() {
   for (const n of all) {
     const j = judgmentPass(n);
     const lm = listMode();
-    const jx = (state.expired || !isExpired(n)) && (state.played || !n.playedAt) &&
-      !(state.listed === "hidden" && queued(n)) && (!lm || n.queueList === lm) && (lm || !n.extra); // judgment minus the rating dropdown
+    const jx = (state.played || !n.playedAt) && (lm
+      ? n.queueList === lm // option b: the list wins visibility in a mode
+      : (state.expired || !isExpired(n)) && !(state.listed === "hidden" && queued(n)) && !n.extra); // judgment minus the rating dropdown
     const sc = scopePass(n), sr = sourcePass(n), ca = catPass(n), dm = domPass(n), ag = agePass(n);
     if (j && sc && sr && dm && ag) { bump(F.cat, ""); for (const c of categoriesOf(n)) bump(F.cat, c); }
     if (j && sc && sr && ca && ag) { bump(F.domain, ""); if (n.domain) bump(F.domain, n.domain); }
@@ -1185,7 +1200,7 @@ function stripeClass(n) {
   return s >= 85 ? " hot2" : s >= 75 ? " hot1" : "";
 }
 
-const PICKLE_ACK = "pickled — hidden from the default view (kept; find it under Rating → Pickled)";
+const PICKLE_ACK = "pickled — hidden from the default view (kept; find it under Rating → Pickled) · tap the same star again to undo";
 
 function card(n) {
   const open = n.id === openId;
