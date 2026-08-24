@@ -471,8 +471,13 @@ function visible() {
 // One dropdown control: label above, options, fill class by origin. A def is
 // [value, label] or {group, items:[[value,label],...]} (native optgroup —
 // the Source dropdown under Scope=Campaign uses one group per campaign).
-function optionHtml([val, lab], value) {
-  return '<option value="' + esc(val) + '"' + (String(val) === String(value) ? " selected" : "") + '>' + lab + "</option>";
+function optionHtml([val, lab, kind], value) {
+  // kind "hdr": the group's all-of entry — blue so it stands out from the
+  // items beneath it (Mike, 2026-08-23). Note: some Android pickers ignore
+  // option colors; the ▸ prefix carries the distinction there.
+  const st = kind === "hdr" ? ' style="color:var(--accent);font-weight:600"' : "";
+  return '<option value="' + esc(val) + '"' + (String(val) === String(value) ? " selected" : "") + st + ">" +
+    (kind === "hdr" ? "&#9656; " : "") + lab + "</option>";
 }
 function selectHtml(id, label, defs, value, fill, extraClass) {
   return '<span class="ctl"><label for="' + id + '">' + label + '</label>' +
@@ -497,7 +502,7 @@ function sourceDefs() {
   if (state.scope === "campaign") {
     return (facets.campaigns || []).map(c => ({
       group: c.name,
-      items: [["c:" + c.id, "all of " + esc(c.name) + fmt(c.n)]].concat(
+      items: [["c:" + c.id, "all of " + esc(c.name) + fmt(c.n), "hdr"]].concat(
         (c.queries || []).map(q => ["q:" + c.id + "|" + q.q, "“" + esc(q.q) + "”" + fmt(q.n)])),
     }));
   }
