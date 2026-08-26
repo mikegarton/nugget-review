@@ -153,6 +153,8 @@
   <!-- Apply is PINNED at row 3's left when a load is pending (Mike,
        2026-08-23): the rest of the row scrolls UNDER it. -->
   <div class="bar"><span id="applySlot" style="flex:none"></span><div class="chips" id="row3"></div></div>
+  <!-- Tier-2 playlist builder (spec §9d): commit top-N of the current view. -->
+  <div class="chips" id="rowBuilder"></div>
   <div id="count"></div>
   <div id="status"></div>
   <div id="pbar"></div>
@@ -642,10 +644,12 @@ function render() {
     document.getElementById("list").innerHTML =
       '<div class="empty">' + (facets ? "Choose Scope and Source above, then tap Apply to load that set." : "Loading…") + "</div>";
     renderPlayerBar([]);
+    renderBuilderRow([]);
     return;
   }
   const v = visible();
   renderPlayerBar(v);
+  renderBuilderRow(v);
   const avail = all.filter(judgmentPass).length;
   document.getElementById("count").textContent =
     (applyPending() ? "selection changed — tap Apply to load · showing " + (SCOPES.find(s => s[0] === loadedSel.scope) || ["", "All"])[1] + " · " : "") +
@@ -707,12 +711,18 @@ function renderPlayerBar(v) {
   const mode = listMode();
   if (!mode || !loadedSel) { bar.className = ""; pane.className = ""; if (PL.active) playerStop(); return; }
   PL.mode = mode;
-  PL.items = v.filter(n => !(state.group === "video") || true); // order = visible order
+  // Tier-2 (spec §9c/f): an audio playlist selection replaces the visible-items
+  // queue with the playlist's items, card/full expansion included.
+  PL.items = (mode === "audio" && PL.playlistSel)
+    ? expandPlaylist(PL.playlistSel)
+    : v.filter(n => !(state.group === "video") || true); // order = visible order
   const cur = PL.items[PL.idx];
   const mediaCtl = mode === "audio"
     ? '<select id="pRoute" title="video items on the Audio list: in-page clip (screen on) or the YouTube app (Premium, locked screen, whole-video fallback)">' +
       '<option value="page"' + (state.ytRoute === "page" ? " selected" : "") + '>video → in-page clip</option>' +
       '<option value="app"' + (state.ytRoute === "app" ? " selected" : "") + '>video → YouTube app</option></select>' +
+      '<select id="pList" title="play a playlist instead of the visible items"><option value="">visible items</option>' +
+        (playlists || []).map(p => '<option value="' + p.id + '"' + (PL.playlistSel === p.id ? " selected" : "") + ">" + esc(p.kind === "system" ? "Audio list (system)" : p.name) + "</option>").join("") + "</select>" +
       '<select id="pVoice" title="voice for text items"></select>' +
       '<select id="pRate" title="speed"><option value="0.85">0.85×</option><option value="1">1×</option><option value="1.15">1.15×</option><option value="1.3">1.3×</option><option value="1.5">1.5×</option></select>'
     : "";
@@ -744,6 +754,7 @@ function renderPlayerBar(v) {
   if (mode !== "read") document.getElementById("pLock").onclick = () => { document.getElementById("lock").className = "on"; };
   if (mode === "audio") {
     document.getElementById("pRoute").onchange = (e) => { state.ytRoute = e.target.value; save(); };
+    document.getElementById("pList").onchange = (e) => { PL.playlistSel = e.target.value || null; playerStop(); render(); };
     const vs = document.getElementById("pVoice");
     const fill = () => { if (!synth) { vs.innerHTML = '<option value="">no speech</option>'; return; }
       const saved = localStorage.getItem("tts_voice") || "";
@@ -790,11 +801,14 @@ function playerGo(i) {
   // the next distinct post (2026-08-23 — four nuggets of one NBJ post
   // voiced the same post four times). Video items keep per-nugget clips.
   const done = () => {
-    const group = isPostSource(n) ? PL.items.filter(x => x.video_id === n.video_id) : [n];
+    // Playlist card half of a card_full pair: no stamp yet, its full follows.
+    if (n._noStamp) { if (PL.active) playerGo(PL.idx + 1); return; }
+    const grouping = isPostSource(n) && !PL.playlistSel;
+    const group = grouping ? PL.items.filter(x => x.video_id === n.video_id) : [n];
     Promise.all(group.map(markPlayed)).then(() => { if (PL.active) render(); });
     if (PL.active) {
       let j = PL.idx + 1;
-      while (j < PL.items.length && isPostSource(n) && PL.items[j].video_id === n.video_id) j++;
+      while (j < PL.items.length && grouping && PL.items[j].video_id === n.video_id) j++;
       playerGo(j);
     }
   };
@@ -838,6 +852,14 @@ function audioEl() {
   return PL.audioEl;
 }
 async function renderAudio(n, pane, done) {
+  // Tier-2 (spec §9f): prefer a rendered audio file when one exists (or when
+  // this is a playlist entry, whose render may still be in flight — the player
+  // polls and falls back gracefully).
+  const unit = n._ttsUnit || { unit_type: isPostSource(n) ? "post" : "transcript", unit_id: n.video_id };
+  if (!n._skipTts && (n._ttsUnit || ttsRendered.has(unit.unit_type + ":" + unit.unit_id))) {
+    playRenderedUnit(n, unit, pane, done);
+    return;
+  }
   const m = n.media || {};
   if (isPostSource(n) && m.audio_url) {
     // Media-vs-text heuristic (Mike, 2026-08-23): the attachment might be a
@@ -994,6 +1016,167 @@ function clipEnd(n, start) {
 }
 let clipLen = 120;
 let speechWpm = 155; // yt_params speech_words_per_minute (media-vs-text heuristic)
+
+// ---- Tier-2 rendered audio + playlists (spec §9, built 2026-08-25) ---------
+let ttsInfo = { vendor: "openai", model: "gpt-4o-mini-tts", voice: "nova", template_version: 1 };
+let ttsRendered = new Set(); // "unit_type:unit_id" keys with a finished render
+let playlists = [];          // yt_playlists rows, each with .items
+let builderN = 5;            // builder counter (§9d: +1 button, fast-forward +5)
+
+// Play a unit's rendered chunk files through our own <audio>: gapless-ish via
+// next-chunk preload (§9f); polls while a fresh commit is still rendering,
+// then falls back to the tier-1 paths (Web Speech / enclosure / YouTube).
+async function playRenderedUnit(n, unit, pane, done, attempt) {
+  pane.innerHTML = '<div class="ptext" id="ttsPane" style="color:var(--dim)">fetching rendered audio…</div>';
+  let res = null;
+  try {
+    res = await (await fetch(BASE + "/tts-urls?key=" + encodeURIComponent(KEY), {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ units: [unit] }),
+    })).json();
+  } catch (e) {}
+  if (!PL.active || PL.items[PL.idx] !== n) return;
+  const u = res && res.units && res.units[0];
+  const chunks = (u && u.chunks) || [];
+  if (!chunks.length) {
+    if (u && u.pending > 0 && (attempt || 0) < 24) { // ~2 min of 5 s polls
+      const el = document.getElementById("ttsPane");
+      if (el) el.textContent = "rendering audio… (" + u.pending + " chunk" + (u.pending > 1 ? "s" : "") + " in flight)";
+      setTimeout(() => { if (PL.active && PL.items[PL.idx] === n) playRenderedUnit(n, unit, pane, done, (attempt || 0) + 1); }, 5000);
+      return;
+    }
+    ttsRendered.delete(unit.unit_type + ":" + unit.unit_id);
+    if (unit.unit_type === "card") { speakCard(n, pane, done); return; }
+    n._skipTts = true;
+    renderAudio(n, pane, done);
+    return;
+  }
+  const a = audioEl();
+  pane.innerHTML = '<div class="ptext" id="ttsPane" style="color:var(--dim)"></div>';
+  pane.appendChild(a);
+  let pos = 0;
+  const playPos = () => {
+    if (!PL.active || PL.items[PL.idx] !== n) return;
+    if (pos >= chunks.length) { done(); return; }
+    a.src = chunks[pos].url;
+    a.playbackRate = Number(localStorage.getItem("tts_rate") || "1") || 1;
+    const el = document.getElementById("ttsPane");
+    if (el) el.textContent = "rendered audio — part " + (pos + 1) + "/" + chunks.length + (u.voice ? " · voice " + u.voice.voice : "");
+    if (pos + 1 < chunks.length) { const pre = new Audio(); pre.preload = "auto"; pre.src = chunks[pos + 1].url; }
+    a.onended = () => { pos++; playPos(); };
+    a.onerror = () => { pos++; playPos(); };
+    a.play().catch(() => {});
+  };
+  setMediaSession(n);
+  playPos();
+}
+
+// Tier-1 fallback for a card unit: voice the card from /bodies via Web Speech.
+async function speakCard(n, pane, done) {
+  pane.innerHTML = '<div class="ptext" id="ttsPane" style="color:var(--dim)">loading card…</div>';
+  let b = null;
+  try {
+    const r = await (await fetch(BASE + "/bodies?key=" + encodeURIComponent(KEY), {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids: [n.id] }),
+    })).json();
+    b = r && r.bodies && r.bodies[n.id];
+  } catch (e) {}
+  if (!PL.active || PL.items[PL.idx] !== n) return;
+  const chunks = [n.headline || "", "From: " + (n.plainTitle || n.videoTitle || "")]
+    .concat(speakable(b && b.content))
+    .concat(b && b.rationale ? ["Coach's note: " + b.rationale] : [])
+    .filter(Boolean);
+  speakChunks(n, chunks, done);
+}
+
+// A playlist expands to play entries (§9a/§9c): card → one card entry;
+// full → one full entry; card_full → the card, then its own full audio.
+function expandPlaylist(id) {
+  const pl = (playlists || []).find(p => p.id === id);
+  if (!pl) return [];
+  const out = [];
+  for (const it of pl.items || []) {
+    const n = byId.get(it.nugget_id);
+    if (!n) continue; // outside the loaded set (v1 limit: load a scope covering it)
+    const fullUnit = { unit_type: isPostSource(n) ? "post" : "transcript", unit_id: n.video_id };
+    if (it.mode === "card") out.push({ ...n, _ttsUnit: { unit_type: "card", unit_id: n.id } });
+    else if (it.mode === "full") out.push({ ...n, _ttsUnit: fullUnit });
+    else {
+      out.push({ ...n, _ttsUnit: { unit_type: "card", unit_id: n.id }, _noStamp: true });
+      out.push({ ...n, _ttsUnit: fullUnit });
+    }
+  }
+  return out;
+}
+
+// Builder row (§9d): counter + CARD-ONLY / CARD+TRANS / ONLY-TRANS over the
+// top N of the CURRENT view (display order, group/sort applied, already-in-
+// playlist items skipped), into a new auto-named playlist or an existing one.
+function renderBuilderRow(v) {
+  const row = document.getElementById("rowBuilder");
+  if (!row) return;
+  if (!loadedSel) { row.innerHTML = ""; return; }
+  const built = (playlists || []).filter(p => p.kind === "built");
+  const VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"];
+  row.innerHTML =
+    '<span class="ctl"><label>Playlist builder — top N of this view</label><span>' +
+    '<button id="bMinus" class="util" title="minus 1">&#8722;</button>' +
+    '<b style="padding:0 6px">' + builderN + "</b>" +
+    '<button id="bPlus" class="util" title="plus 1">+1</button>' +
+    '<button id="bFast" class="util" title="plus 5">&#9193;+5</button></span></span>' +
+    '<span class="ctl"><label>Commit</label><span>' +
+    '<button id="bCard" title="the top N cards, read aloud">CARD-ONLY</button>' +
+    '<button id="bCardFull" title="each card, then its full audio">CARD+TRANS</button>' +
+    '<button id="bFull" title="full audio only">ONLY-TRANS</button></span></span>' +
+    '<span class="ctl"><label for="bList">Into</label><select id="bList"><option value="">new playlist</option>' +
+    built.map(p => '<option value="' + p.id + '">' + esc(p.name) + "</option>").join("") + "</select></span>" +
+    '<span class="ctl"><label for="bVoice">Voice</label><select id="bVoice">' +
+    VOICES.map(x => '<option value="' + x + '"' + (x === (ttsInfo.voice || "nova") ? " selected" : "") + ">" + x + (x === ttsInfo.voice ? " (default)" : "") + "</option>").join("") + "</select></span>" +
+    '<span class="pnow" id="bMsg"></span>';
+  document.getElementById("bPlus").onclick = () => { builderN += 1; renderBuilderRow(v); };
+  document.getElementById("bFast").onclick = () => { builderN += 5; renderBuilderRow(v); };
+  document.getElementById("bMinus").onclick = () => { builderN = Math.max(1, builderN - 1); renderBuilderRow(v); };
+  document.getElementById("bCard").onclick = () => builderCommit(v, "card");
+  document.getElementById("bCardFull").onclick = () => builderCommit(v, "card_full");
+  document.getElementById("bFull").onclick = () => builderCommit(v, "full");
+}
+async function builderCommit(v, mode) {
+  const listId = document.getElementById("bList").value || null;
+  const voice = document.getElementById("bVoice").value;
+  const msg = document.getElementById("bMsg");
+  const pl = (playlists || []).find(p => p.id === listId);
+  const have = new Set(pl ? (pl.items || []).map(i => i.nugget_id + "|" + i.mode) : []);
+  const items = v.filter(n => !have.has(n.id + "|" + mode)).slice(0, builderN)
+    .map(n => ({ nugget_id: n.id, mode }));
+  if (!items.length) { msg.textContent = "nothing new to commit"; return; }
+  msg.textContent = "committing " + items.length + "…";
+  const body = { items };
+  if (listId) body.playlist_id = listId;
+  else {
+    const d = new Date();
+    body.name = (d.getMonth() + 1) + "-" + d.getDate() + " " + (loadedSel.scope || "all") + " " + state.sort + " top" + items.length + " " + mode;
+    if (voice && voice !== ttsInfo.voice) body.voice = { vendor: ttsInfo.vendor, model: ttsInfo.model, voice };
+  }
+  try {
+    const res = await fetch(BASE + "/builder-commit?key=" + encodeURIComponent(KEY), {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+    const j = await res.json();
+    if (!res.ok) { msg.textContent = "error: " + (j.error || res.status); return; }
+    const newItems = (start) => items.map((it, k) => ({ playlist_id: j.playlist_id, position: start + k, nugget_id: it.nugget_id, mode: it.mode, played_at: null }));
+    if (pl) pl.items = (pl.items || []).concat(newItems(pl.items ? pl.items.length : 0));
+    else playlists.push({
+      id: j.playlist_id, kind: "built", name: body.name,
+      voice_vendor: body.voice ? body.voice.vendor : null,
+      voice_model: body.voice ? body.voice.model : null,
+      voice_voice: body.voice ? body.voice.voice : null,
+      items: newItems(0),
+    });
+    msg.textContent = "committed " + j.items + " item(s), " + j.jobs + " render job(s) — first audio in ~15-20 s";
+    render();
+  } catch (e) { msg.textContent = "network error"; }
+}
 function setMediaSession(n) {
   if (!("mediaSession" in navigator)) return;
   try {
@@ -1470,6 +1653,10 @@ async function loadData() {
   vizLo = Number.isFinite(Number(data.viz_lo)) ? Number(data.viz_lo) : 30;
   clipLen = Number(data.clip_default_seconds) || 120;
   speechWpm = Number(data.speech_wpm) || 155;
+  // Tier-2 (spec §9): default voice trio, rendered-unit keys, playlists.
+  if (data.tts) ttsInfo = data.tts;
+  ttsRendered = new Set(data.tts_rendered || []);
+  playlists = data.playlists || [];
   if (facets) facets.audio_playlist_id = data.audio_playlist_id || facets.audio_playlist_id || "";
   byId = new Map(all.map(n => [n.id, n]));
   channelHype = new Map((data.channel_hype || []).map(c => [c.label, c.avg_hype]));
