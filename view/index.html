@@ -712,9 +712,12 @@ function renderPlayerBar(v) {
   if (!mode || !loadedSel) { bar.className = ""; pane.className = ""; if (PL.active) playerStop(); return; }
   PL.mode = mode;
   // Tier-2 (spec §9c/f): an audio playlist selection replaces the visible-items
-  // queue with the playlist's items, card/full expansion included.
+  // queue with the playlist's items, card/full expansion included. The
+  // expansion is CACHED: renderPlayerBar runs on every render, and the async
+  // renderers compare the current item by identity — fresh copies each render
+  // would fail that check and kill playback mid-fetch.
   PL.items = (mode === "audio" && PL.playlistSel)
-    ? expandPlaylist(PL.playlistSel)
+    ? plExpanded(PL.playlistSel)
     : v.filter(n => !(state.group === "video") || true); // order = visible order
   const cur = PL.items[PL.idx];
   const mediaCtl = mode === "audio"
@@ -1090,6 +1093,13 @@ async function speakCard(n, pane, done) {
   speakChunks(n, chunks, done);
 }
 
+// Cached expansion — same entry objects across renders (identity-stable).
+function plExpanded(id) {
+  const pl = (playlists || []).find(p => p.id === id);
+  const sig = id + ":" + (pl && pl.items ? pl.items.length : 0);
+  if (!PL.plCache || PL.plCache.sig !== sig) PL.plCache = { sig, items: expandPlaylist(id) };
+  return PL.plCache.items;
+}
 // A playlist expands to play entries (§9a/§9c): card → one card entry;
 // full → one full entry; card_full → the card, then its own full audio.
 function expandPlaylist(id) {
