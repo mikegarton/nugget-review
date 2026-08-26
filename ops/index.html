@@ -355,6 +355,18 @@ function render() {
       quota: budgetUsd, quotaText: "$" + budgetUsd,
       elapsed: monthFrac, resets: "month end",
     });
+    const tm = ops.tts_month;
+    if (tm) {
+      const ttsCap = Number(pmap.get("tts_max_usd_month")) || 5;
+      rows.push({
+        name: "Voice renders — TTS cards", type: "ceiling",
+        sub: "OpenAI TTS dollars this month vs the governor (✎ below) — yt-tts stops rendering at the cap · " +
+          (tm.mtd_renders || 0) + " renders this month",
+        used: Number(tm.mtd_tts_usd) || 0, usedText: "$" + fmt(tm.mtd_tts_usd, 2),
+        quota: ttsCap, quotaText: "$" + ttsCap,
+        elapsed: monthFrac, resets: "month end",
+      });
+    }
   }
   budgets.forEach(b => {
     rows.push({
