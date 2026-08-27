@@ -120,6 +120,8 @@
     display: inline-block; background: var(--accent); color: #08131f;
     border-radius: 8px; padding: 8px 14px; text-decoration: none; font-weight: 600; font-size: 14px;
   }
+  button.subbtn { border: 0; cursor: pointer; font-family: inherit; }
+  button.subbtn:disabled { opacity: 0.6; cursor: default; }
   .stars { display: flex; gap: 2px; }
   .stars button {
     background: none; border: none; font-size: 24px; color: var(--faint);
@@ -595,7 +597,7 @@ function renderControls() {
       '" title="re-admit unrated nuggets past their categories\' TTL">' + (state.expired ? "shown" : "hidden") + "</button></span>" +
     '<span class="ctl"><label for="cPlayed">Played</label><button id="cPlayed" class="' + (state.played ? "user-set" : "") +
       '" title="items a list renderer already finished: hidden, or shown dimmed">' + (state.played ? "shown" : "hidden") + "</button></span>" +
-    selectHtml("cListed", "Listed (A/V/R)", LISTED, state.listed, fillFor("listed")) +
+    selectHtml("cListed", "List as (A/V/R)", LISTED, state.listed, fillFor("listed")) +
     '<span class="gap"></span>' +
     '<span class="ctl"><label>&nbsp;</label><button id="zoomOut" class="util" title="smaller text">A−</button></span>' +
     '<span class="ctl"><label>&nbsp;</label><button id="zoomIn" class="util" title="larger text">A+</button></span>';
@@ -1355,6 +1357,10 @@ function ghead(n, g) {
       '<a class="watch gwatch" target="_blank" rel="noopener" href="' +
         (isPostSource(n) ? esc(n.contentUrl || "#") : "https://www.youtube.com/watch?v=" + n.video_id) + '">' +
         (isPostSource(n) ? "&#128214; Open" : "&#9654; Watch") + "</a>" +
+      (!isPostSource(n) && n.campaignId != null && n.channelId
+        ? '<button class="watch subbtn" id="sub-' + esc(n.video_id) +
+          '" title="subscribe to this channel in YouTube (YouTube-side only — pipeline polling unchanged)"' +
+          ' onclick="subscribeCh(\'' + esc(n.channelId) + "','" + esc(n.video_id) + '\')">+ Subscribe</button>' : "") +
     "</div></div>";
 }
 
@@ -1392,6 +1398,29 @@ async function setListAll(vid, key) {
   for (const n of targets) { n.queueList = allOn ? null : key; n.queuedAt = allOn ? null : ts; pinned.add(n.id); }
   render();
   for (const n of targets) await post("/queued", { id: n.id, list: allOn ? null : key });
+}
+
+// Subscribe (campaign headers): joins the channel in YouTube itself via
+// yt-review's OAuth. YouTube-side only — yt_channels.enabled is untouched,
+// so pipeline polling does not start (a channel slot stays a deliberate,
+// separate decision). Needs its own fetch: post() discards the response
+// body, and "already subscribed" must read back as success.
+async function subscribeCh(chId, vid) {
+  const b = document.getElementById("sub-" + vid);
+  if (b) { b.disabled = true; b.textContent = "…"; }
+  try {
+    const res = await fetch(BASE + "/subscribe?key=" + encodeURIComponent(KEY), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ channel_id: chId }),
+    });
+    const out = await res.json().catch(() => null);
+    if (!res.ok || !out || !out.ok) throw new Error((out && out.error) || "HTTP " + res.status);
+    if (b) b.textContent = out.already ? "✓ already subscribed" : "✓ subscribed";
+  } catch (e) {
+    if (b) { b.disabled = false; b.textContent = "+ Subscribe"; }
+    alert("Subscribe failed: " + e.message);
+  }
 }
 
 // Second-dimension stripe: the sort carries one score, the colored left edge
