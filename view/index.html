@@ -122,6 +122,8 @@
   }
   button.subbtn { border: 0; cursor: pointer; font-family: inherit; }
   button.subbtn:disabled { opacity: 0.6; cursor: default; }
+  button.spbtn { padding: 6px 10px; border-radius: 8px; font-size: 13px; cursor: pointer; font-family: inherit; }
+  button.spbtn:disabled { opacity: 0.6; cursor: default; }
   .stars { display: flex; gap: 2px; }
   .stars button {
     background: none; border: none; font-size: 24px; color: var(--faint);
@@ -1381,6 +1383,11 @@ function ghead(n, g) {
         ? '<button class="watch subbtn" id="sub-' + esc(n.video_id) +
           '" title="subscribe to this channel in YouTube AND adopt it into the pipeline&#39;s subscribed stream (future uploads polled hourly)"' +
           ' onclick="subscribeCh(\'' + esc(n.channelId) + "','" + esc(n.video_id) + '\')">+ Subscribe</button>' : "") +
+      (n.campaignId != null && n.campaignQuery
+        ? '<button class="lb spbtn" id="sp-' + esc(n.video_id) +
+          '" title="stop the phrase that found this video — &#8220;' + esc(n.campaignQuery) +
+          '&#8221; is skipped from the next prospector sweep (reversible in SQL; existing videos and nuggets untouched)"' +
+          ' onclick="stopPhrase(\'' + esc(n.video_id) + '\')">&#10007; stop phrase</button>' : "") +
     "</div></div>";
 }
 
@@ -1441,6 +1448,30 @@ async function subscribeCh(chId, vid) {
   } catch (e) {
     if (b) { b.disabled = false; b.textContent = "+ Subscribe"; }
     alert("Subscribe failed: " + e.message);
+  }
+}
+
+// Stop-phrase (campaign headers, Mike 2026-08-27): deactivates the campaign
+// query that found this video (yt_campaign_queries.active = false via
+// POST /stop-phrase) — the prospector skips it from the next sweep. Looks
+// the nugget up by video_id to avoid quoting the phrase into the onclick.
+async function stopPhrase(vid) {
+  const n = all.find(x => x.video_id === vid && x.campaignId != null && x.campaignQuery);
+  const b = document.getElementById("sp-" + vid);
+  if (!n) return;
+  if (b) { b.disabled = true; b.textContent = "…"; }
+  try {
+    const res = await fetch(BASE + "/stop-phrase?key=" + encodeURIComponent(KEY), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ campaign_id: n.campaignId, query: n.campaignQuery }),
+    });
+    const out = await res.json().catch(() => null);
+    if (!res.ok || !out || !out.ok) throw new Error((out && out.error) || "HTTP " + res.status);
+    if (b) b.textContent = "✓ phrase stopped";
+  } catch (e) {
+    if (b) { b.disabled = false; b.textContent = "✗ stop phrase"; }
+    alert("Stop phrase failed: " + e.message);
   }
 }
 
