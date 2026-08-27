@@ -483,8 +483,11 @@ function visible() {
 // the Source dropdown under Scope=Campaign uses one group per campaign).
 function optionHtml([val, lab, kind], value) {
   // kind "hdr": the group's all-of entry — blue so it stands out from the
-  // items beneath it (Mike, 2026-08-23). Note: some Android pickers ignore
-  // option colors; the ▸ prefix carries the distinction there.
+  // items beneath it (Mike, 2026-08-23). KNOWN LIMITATION (ruled 2026-08-26):
+  // Android Chrome renders the open dropdown as a native sheet that ignores
+  // ALL option CSS, so the blue shows on desktop only. Decision: keep the
+  // blue anyway (a future Android/WebView update may honor it); the ALL-CAPS
+  // label + ▸ prefix carry the distinction on Android.
   const st = kind === "hdr" ? ' style="color:var(--accent);font-weight:600"' : "";
   return '<option value="' + esc(val) + '"' + (String(val) === String(value) ? " selected" : "") + st + ">" +
     (kind === "hdr" ? "&#9656; " : "") + lab + "</option>";
@@ -512,7 +515,7 @@ function sourceDefs() {
   if (state.scope === "campaign") {
     return (facets.campaigns || []).map(c => ({
       group: c.name,
-      items: [["c:" + c.id, "all of " + esc(c.name) + fmt(c.n), "hdr"]].concat(
+      items: [["c:" + c.id, esc(("all of " + c.name).toUpperCase()) + fmt(c.n), "hdr"]].concat(
         (c.queries || []).map(q => ["q:" + c.id + "|" + q.q, "“" + esc(q.q) + "”" + fmt(q.n)])),
     }));
   }
@@ -1359,7 +1362,7 @@ function ghead(n, g) {
         (isPostSource(n) ? "&#128214; Open" : "&#9654; Watch") + "</a>" +
       (!isPostSource(n) && n.campaignId != null && n.channelId
         ? '<button class="watch subbtn" id="sub-' + esc(n.video_id) +
-          '" title="subscribe to this channel in YouTube (YouTube-side only — pipeline polling unchanged)"' +
+          '" title="subscribe to this channel in YouTube AND adopt it into the pipeline&#39;s subscribed stream (future uploads polled hourly)"' +
           ' onclick="subscribeCh(\'' + esc(n.channelId) + "','" + esc(n.video_id) + '\')">+ Subscribe</button>' : "") +
     "</div></div>";
 }
@@ -1400,11 +1403,12 @@ async function setListAll(vid, key) {
   for (const n of targets) await post("/queued", { id: n.id, list: allOn ? null : key });
 }
 
-// Subscribe (campaign headers): joins the channel in YouTube itself via
-// yt-review's OAuth. YouTube-side only — yt_channels.enabled is untouched,
-// so pipeline polling does not start (a channel slot stays a deliberate,
-// separate decision). Needs its own fetch: post() discards the response
-// body, and "already subscribed" must read back as success.
+// Subscribe (campaign headers), both sides since 2026-08-26: joins the
+// channel in YouTube via yt-review's OAuth AND flips yt_channels.enabled so
+// the poller adopts it (future uploads flow as subscription nuggets; the
+// existing campaign nuggets keep their campaign provenance). Needs its own
+// fetch: post() discards the response body, and "already subscribed" must
+// read back as success.
 async function subscribeCh(chId, vid) {
   const b = document.getElementById("sub-" + vid);
   if (b) { b.disabled = true; b.textContent = "…"; }
