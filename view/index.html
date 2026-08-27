@@ -246,7 +246,14 @@ delete state.hideQ;
 if (!LISTED.some(l => l[0] === state.listed)) state.listed = "all";
 { const pl = new URLSearchParams(location.search).get("listed"); if (pl && LISTED.some(l => l[0] === pl)) state.listed = pl; }
 let openId = null;
-let collapsed = new Set();
+// Group-header fold state (Mike, 2026-08-26): a MODE plus per-header
+// exceptions. collapseMode false = headers open by default (gToggled holds
+// the ones the user closed); true = headers closed by default (gToggled
+// holds the ones the user opened). The row-2 "Headers" chip flips the mode
+// and CLEARS the exceptions — a global click overrides individual state.
+let collapseMode = false;
+let gToggled = new Set();
+function isGroupCollapsed(vid) { return collapseMode ? !gToggled.has(vid) : gToggled.has(vid); }
 // Cards mutated while on screen keep their spot even once they stop passing
 // the filters (a 1-2 star tap shows its pickled acknowledgment instead of
 // vanishing mid-tap). Cleared on any filter/sort/group change.
@@ -585,6 +592,14 @@ function renderControls() {
   const sortFill = state.sortOrigin === "side_effect" ? "side-effect" : fillFor("sort");
   document.getElementById("row2").innerHTML =
     selectHtml("cGroup", "Group", GROUPS, state.group, fillFor("group")) +
+    // Fold chip (Mike, 2026-08-26): only when grouping is on. Shows the
+    // ACTION it performs; clicking flips the whole list and wipes any
+    // individually toggled headers.
+    (state.group
+      ? '<span class="ctl"><label for="cFold">Headers</label><button id="cFold" class="' + (collapseMode ? "user-set" : "") +
+        '" title="fold or unfold every group — overrides individually toggled headers; tapping one header afterwards still toggles just that group">' +
+        (collapseMode ? "expand" : "collapse") + "</button></span>"
+      : "") +
     selectHtml("cSort", "Sort", SORTS.map(s => [s[0], s[1]]), state.sort, sortFill) +
     '<span class="ctl"><label for="cDir">Dir</label><button id="cDir" class="' + (state.dir === "asc" ? "user-set" : "") +
       '" title="ascending is the weeding view">' + (state.dir === "asc" ? "▲ asc" : "▼ desc") + "</button></span>";
@@ -611,7 +626,7 @@ function renderControls() {
   bind("cDomain", "domain");
   bind("cAge", "age");
   // Everything but Scope/Source/Apply is inert until a subset is loaded.
-  for (const id of ["cCat", "cDomain", "cAge", "cGroup", "cSort", "cDir", "cRate", "cExp", "cPlayed", "cListed", "zoomIn", "zoomOut"]) {
+  for (const id of ["cCat", "cDomain", "cAge", "cGroup", "cFold", "cSort", "cDir", "cRate", "cExp", "cPlayed", "cListed", "zoomIn", "zoomOut"]) {
     const el = document.getElementById(id);
     if (el) el.disabled = !loadedSel;
   }
@@ -625,6 +640,8 @@ function renderControls() {
   document.getElementById("cDir").onclick = () => {
     state.dir = state.dir === "asc" ? "desc" : "asc"; state.sortOrigin = "user"; touched();
   };
+  const fold = document.getElementById("cFold");
+  if (fold) fold.onclick = () => { collapseMode = !collapseMode; gToggled = new Set(); render(); };
   document.getElementById("cExp").onclick = () => { state.expired = !state.expired; touched(); };
   document.getElementById("cPlayed").onclick = () => { state.played = !state.played; touched(); };
   bind("cListed", "listed", () => { playerStop(); });
@@ -1283,7 +1300,7 @@ function grouped(v) {
     const g = byVid.get(n.video_id);
     if (g.length === 1) { out.push({ html: card(n), n: 1, ids: [n.id] }); continue; }
     out.push({
-      html: ghead(n, g) + (collapsed.has(n.video_id) ? "" : '<div class="gcards">' + g.map(card).join("") + "</div>"),
+      html: ghead(n, g) + (isGroupCollapsed(n.video_id) ? "" : '<div class="gcards">' + g.map(card).join("") + "</div>"),
       n: g.length,
       ids: g.map(x => x.id),
     });
@@ -1333,7 +1350,7 @@ function scoreStrip(n) {
 }
 
 function ghead(n, g) {
-  const isC = collapsed.has(n.video_id);
+  const isC = isGroupCollapsed(n.video_id);
   const dur = n.durationSeconds ? " in " + fmtDur(n.durationSeconds) : "";
   // Header stars light to the group's lowest rating (unrated = 0): a fully
   // rated group reads at a glance, a mixed one stays dark. They are a BULK
@@ -1368,7 +1385,7 @@ function ghead(n, g) {
 }
 
 function toggleGroup(vid) {
-  collapsed.has(vid) ? collapsed.delete(vid) : collapsed.add(vid);
+  gToggled.has(vid) ? gToggled.delete(vid) : gToggled.add(vid);
   render();
 }
 
@@ -1710,7 +1727,7 @@ async function loadData() {
   catList = Object.keys(catTtls).filter(c => seen.has(c))
     .concat([...seen].filter(c => !(c in catTtls)).sort());
   loadedSel = sel;
-  pinned.clear(); toasts.clear(); paintLimit = WINDOW; openId = null; collapsed = new Set();
+  pinned.clear(); toasts.clear(); paintLimit = WINDOW; openId = null; gToggled = new Set();
   render();
 }
 load();
