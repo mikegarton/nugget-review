@@ -1384,7 +1384,7 @@ function ghead(n, g) {
         ? '<button class="watch subbtn" id="sub-' + esc(n.video_id) +
           '" title="subscribe to this channel in YouTube AND adopt it into the pipeline&#39;s subscribed stream (future uploads polled hourly)"' +
           ' onclick="subscribeCh(\'' + esc(n.channelId) + "','" + esc(n.video_id) + '\')">+ Subscribe</button>' : "") +
-      phraseControl(n) +
+      phraseControl(n) + unsubControls(n) +
     "</div></div>";
 }
 
@@ -1469,6 +1469,68 @@ function phraseControl(n) {
     '&#8221; is skipped from the next prospector sweep (restartable; existing videos and nuggets untouched)"' +
     ' onclick="setPhrase(\'' + esc(n.video_id) + '\', false)">&#10007; stop phrase</button>';
 }
+// Unsubscribe pair (Mike, 2026-08-27): WEEDING VIEW only — any score sort,
+// ascending. "unsub nuggets" stops the pipeline polling the channel
+// (enabled = false; rows and nuggets kept) — applies to YouTube
+// subscriptions AND free substack (the poller pulls only enabled channels,
+// both feed kinds); substack_paid is excluded because mail ingest ignores
+// enabled and the button would claim a stop it cannot deliver. "unsub
+// YouTube" removes the account subscription (OAuth delete). Both are
+// two-tap: first tap arms ("sure?", 5 s), second tap fires.
+const SCORE_SORTS = ["appeal", "coach", "broccoli", "needs_viz", "my_rating"];
+const armedUnsub = new Set();
+const doneUnsub = new Map();  // "<vid>|<side>" -> result text, survives re-renders
+function unsubControls(n) {
+  if (!(state.dir === "asc" && SCORE_SORTS.includes(state.sort))) return "";
+  const manual = !!(n.sourceKey && n.sourceKey.endsWith("_manual"));
+  const subYt = n.source === "youtube" && n.campaignId == null && !manual;
+  const subStack = n.source === "substack";
+  if (!subYt && !subStack) return "";
+  const btn = (side, label) => {
+    const k = n.channelId + "|" + side;  // per CHANNEL: every header of the channel shows one state
+    if (doneUnsub.has(k)) return '<button class="lb spbtn" disabled>' + doneUnsub.get(k) + "</button>";
+    return '<button class="lb spbtn" id="un-' + side + "-" + esc(n.video_id) +
+      '" title="' + (side === "pipeline"
+        ? "stop the pipeline polling this channel — enabled = false; existing nuggets kept"
+        : "remove this channel from the YouTube account&#39;s subscriptions") +
+      ' — first tap arms, second tap fires"' +
+      ' onclick="unsub(\'' + esc(n.video_id) + "','" + side + '\')">' +
+      (armedUnsub.has(k) ? "sure?" : label) + "</button>";
+  };
+  return btn("pipeline", "&#10005; unsub nuggets") +
+    (subYt ? btn("youtube", "&#10005; unsub YouTube") : "");
+}
+async function unsub(vid, side) {
+  const n0 = all.find(x => x.video_id === vid);
+  if (!n0 || !n0.channelId) return;
+  const k = n0.channelId + "|" + side;
+  if (!armedUnsub.has(k)) {
+    armedUnsub.add(k);
+    setTimeout(() => { if (armedUnsub.delete(k)) render(); }, 5000);
+    render();
+    return;
+  }
+  armedUnsub.delete(k);
+  const n = n0;
+  const b = document.getElementById("un-" + side + "-" + vid);
+  if (b) { b.disabled = true; b.textContent = "…"; }
+  try {
+    const res = await fetch(BASE + "/unsubscribe?key=" + encodeURIComponent(KEY), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ channel_id: n.channelId, side }),
+    });
+    const out = await res.json().catch(() => null);
+    if (!res.ok || !out || !out.ok) throw new Error((out && out.error) || "HTTP " + res.status);
+    doneUnsub.set(k, side === "pipeline" ? "✓ nuggets unsubbed"
+      : (out.already ? "✓ was not subscribed" : "✓ YouTube unsubbed"));
+    render();
+  } catch (e) {
+    render();
+    alert("Unsubscribe failed: " + e.message);
+  }
+}
+
 async function setPhrase(vid, restart) {
   const n = all.find(x => x.video_id === vid && x.campaignId != null && x.campaignQuery);
   const b = document.getElementById("sp-" + vid);
