@@ -132,16 +132,24 @@ blank). Tap a column header to sort.</div>
 <select id="monthSel"></select>
 <div class="twrap"><table id="monthly"></table></div>
 
-<h2>Pipeline flow parameters</h2>
+<h2>Pipeline parameters — yt_params</h2>
 <div class="twrap"><table id="knobs"></table></div>
-<div class="note">Every tunable number the pipeline runs on — batch pace,
-retry behavior, budgets, caps; the next run picks changes up, no redeploy.
-Rows marked ✎ are editable here: click the value, enter the ops write key once
-per session (kept in this tab only, never stored). Bounds are enforced
+<div class="note">Every live number the pipeline runs on, grouped by what it
+governs; the next run picks changes up, no redeploy. The bold name is the
+row's <code>key</code> — search the page or the code for it verbatim. Rows
+marked ✎ are editable here: click the value, enter the ops write key once per
+session (kept in this tab only, never stored). Bounds are enforced
 server-side — the browser is never trusted. Everything else stays SQL-editor
-only, using the key shown under each name:
-<code>update yt_params set value = '…' where key = '…';</code>
+only: <code>update yt_params set value = '…' where key = '…';</code>
 Every change is audited.</div>
+
+<h2>Code constants — static, a change is a code release</h2>
+<div class="twrap"><table id="consts"></table></div>
+<div class="note">Numbers fixed in the function source (and the one platform
+limit nothing can edit), listed here so every constant the pipeline runs on
+is findable by name in one place. The name is the identifier in the code.
+Change one by editing the named function and redeploying; this listing is
+maintained by hand alongside it (2026-09-11).</div>
 
 <script>
 const BASE = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-review";
@@ -481,25 +489,147 @@ const KNOB_NAMES = {
   queue_playlist_id: "Queue playlist",
   queue_sync_cap: "Playlist syncs per run",
   substack_links_per_post: "Links kept per post",
+  retry_delay_h: "Wait between strikes (hours)",
+  credit_pause_minutes: "Pause after an AI credit outage (minutes)",
+  live_stream_defer_h: "Wait for a live stream to end (hours)",
+  claude_paused_until: "AI credit pause ends at (state, written by the processor)",
+  tts_max_usd_month: "Voice render monthly cap ($)",
+  nugget_audio_playlist_id: "Audio-list playlist",
+  clip_default_seconds: "Clip length (s)",
+  speech_words_per_minute: "Spoken-word rate (words/min)",
+  viz_hi: "Needs-viz video threshold",
+  viz_lo: "Needs-viz audio threshold",
 };
 
-function renderKnobs() {
-  document.getElementById("knobs").innerHTML =
-    "<tr><th>parameter</th><th>value</th><th>bounds</th><th>what it does</th></tr>" +
-    ((ops.params || []).length ? (ops.params || []).map(p => {
-      const bounds = p.editable
-        ? fmt(p.min_value, 0) + " – " + fmt(p.max_value, 0) : "—";
-      const val = p.editable
-        ? '<td class="editable" style="color:var(--accent);cursor:pointer" title="click to edit (ops write key)" ' +
-          "onclick=\"editLever('yt_params','" + esc(p.key) + "','" + esc(p.value) + "')\">" +
-          esc(p.value) + " ✎</td>"
-        : '<td style="color:var(--dim)">' + esc(p.value) + "</td>";
-      const name = KNOB_NAMES[p.key] || p.key.replace(/_/g, " ");
-      return "<tr><td>" + esc(name) + '<br><span class="dim">' + esc(p.key) + "</span></td>" + val +
-        "<td>" + bounds + "</td><td>" + esc(p.description) + "</td></tr>";
-    }).join("")
-      : '<tr><td colspan="4" class="empty">yt_params not populated yet — run the 20260729 migration.</td></tr>');
+// Groups (2026-09-11, Mike): one header per thing governed; scope = which
+// function reads the row. A key missing from every group lands under
+// "Ungrouped" so a new row can never be hidden.
+const KNOB_GROUPS = [
+  { title: "Run cadence and wall clock", scope: "yt-processor",
+    keys: ["batch_size", "batch_pacing_s", "wall_clock_budget_ms"] },
+  { title: "Retries, strikes, and run-level pauses", scope: "yt-processor",
+    keys: ["transcript_retries", "transcript_backoff_s", "transcript_timeout_ms",
+           "claude_retries", "claude_backoff_s", "claude_timeout_ms",
+           "transient_max_strikes", "retry_delay_h",
+           "credit_pause_minutes", "claude_paused_until", "live_stream_defer_h"] },
+  { title: "Extraction", scope: "yt-processor",
+    keys: ["extract_max_tokens", "substack_links_per_post", "extract_max_tokens_retry", "purge_grace_hours"] },
+  { title: "Budgets and governors", scope: "yt-processor · yt-tts · ops page",
+    keys: ["claude_budget_usd_month", "burn_multiplier", "tts_max_usd_month"] },
+  { title: "Polling and playlists", scope: "yt-poller · yt-playlist-sync",
+    keys: ["poll_pacing_ms", "manual_playlist_id", "queue_playlist_id", "nugget_audio_playlist_id", "queue_sync_cap"] },
+  { title: "Mail ingest", scope: "yt-mail-ingest",
+    keys: ["mail_ingest_channel", "mail_ingest_query"] },
+  { title: "Text-to-speech", scope: "yt-tts · viewer",
+    keys: ["tts_vendor", "tts_model", "tts_voice", "card_template_version"] },
+  { title: "Viewer", scope: "yt-review /data · viewer",
+    keys: ["clip_default_seconds", "speech_words_per_minute", "viz_hi", "viz_lo"] },
+];
+
+function knobRow(p) {
+  const bounds = p.editable
+    ? fmt(p.min_value, 0) + " – " + fmt(p.max_value, 0) : "—";
+  const val = p.editable
+    ? '<td class="editable" style="color:var(--accent);cursor:pointer" title="click to edit (ops write key)" ' +
+      "onclick=\"editLever('yt_params','" + esc(p.key) + "','" + esc(p.value) + "')\">" +
+      esc(p.value) + " ✎</td>"
+    : '<td style="color:var(--dim)">' + esc(p.value) + "</td>";
+  const plain = KNOB_NAMES[p.key];
+  return "<tr><td><b>" + esc(p.key) + "</b>" +
+    (plain ? '<br><span class="dim">' + esc(plain) + "</span>" : "") + "</td>" + val +
+    "<td>" + bounds + "</td><td>" + esc(p.description) + "</td></tr>";
 }
+
+function renderKnobs() {
+  const params = ops.params || [];
+  const byKey = new Map(params.map(p => [p.key, p]));
+  const placed = new Set();
+  let html = "<tr><th>parameter</th><th>value</th><th>bounds</th><th>scope and impact</th></tr>";
+  if (!params.length) {
+    document.getElementById("knobs").innerHTML = html +
+      '<tr><td colspan="4" class="empty">yt_params not populated yet — run the 20260729 migration.</td></tr>';
+    return;
+  }
+  for (const g of KNOB_GROUPS) {
+    const rows = g.keys.filter(k => byKey.has(k));
+    if (!rows.length) continue;
+    html += '<tr><td colspan="4" style="background:var(--card);font-weight:600;padding-top:12px">' +
+      esc(g.title) + ' <span class="dim">— read by ' + esc(g.scope) + "</span></td></tr>";
+    for (const k of rows) { html += knobRow(byKey.get(k)); placed.add(k); }
+  }
+  const rest = params.filter(p => !placed.has(p.key)).sort((a, b) => a.key.localeCompare(b.key));
+  if (rest.length) {
+    html += '<tr><td colspan="4" style="background:var(--card);font-weight:600;padding-top:12px">Ungrouped' +
+      ' <span class="dim">— new rows not yet placed in a group above</span></td></tr>';
+    html += rest.map(knobRow).join("");
+  }
+  document.getElementById("knobs").innerHTML = html;
+}
+
+// Static: constants fixed in the function source, plus the one platform limit.
+// Kept by hand next to the code (2026-09-11). value = as written in code.
+const CODE_CONSTANTS = [
+  { group: "Platform limit (not editable anywhere)", rows: [
+    ["edge wall clock", "~150 s", "every edge function",
+     "Supabase FREE-plan kill per invocation (status 546; 400 s on the paid plan). Caps batch_size; a killed run writes nothing of its own, which is why yt-processor stamps the strike before the work"],
+  ]},
+  { group: "yt-processor", rows: [
+    ["MAX_TRANSCRIPT_CHARS", "60000", "yt-processor",
+     "Characters of transcript the extractor sees; the tail beyond it is silently dropped (about 5% of transcripts). The archived copy in yt_transcripts is never clipped"],
+    ["START_PAD_SECONDS", "20", "yt-processor",
+     "Seconds a nugget's watch link rewinds before the estimated start so context is never missed"],
+    ["END_MARGIN_SECONDS", "30", "yt-processor",
+     "A stored start never lands past duration minus this; an estimate past the end is re-located by word position"],
+  ]},
+  { group: "yt-tts", rows: [
+    ["CHUNK_CHARS", "3500", "yt-tts",
+     "Characters per render chunk, sentence-aligned, under gpt-4o-mini-tts's ~4k input cap. Sets how many jobs a post or transcript expands into"],
+    ["TAKE", "25", "yt-tts", "Pending rows fetched per loop pass"],
+    ["UNDO_MS", "5000", "yt-tts",
+     "Milliseconds a new job must age before it is taken — the viewer's undo window after a tap"],
+    ["RETRY_GAP_MS", "4 h", "yt-tts", "Wait between a job's strikes"],
+    ["MAX_ATTEMPTS", "3", "yt-tts", "Strikes before a job goes terminal (status error; last_error says why)"],
+    ["RECLAIM_MS", "10 min", "yt-tts",
+     "A row still in status rendering this long after its attempt stamp was killed by the wall clock and is put back to pending (terminal if it was the last attempt). Any value above the wall clock works the same"],
+  ]},
+  { group: "yt-prospector", rows: [
+    ["SEARCH_RESULTS_PER_QUERY", "25", "yt-prospector", "YouTube search results fetched per campaign query per day (100 quota units per query)"],
+    ["MIN_DURATION_S", "180", "yt-prospector", "Candidates shorter than this are screened out before any transcript is spent"],
+    ["MAX_DURATION_S", "10800", "yt-prospector", "Candidates longer than 3 h are screened out"],
+  ]},
+  { group: "taste-refresh (drift check)", rows: [
+    ["DRIFT_MIN_N", "30", "taste-refresh", "No drift verdict below this many rated nuggets"],
+    ["DRIFT_MISS_RATE_MAX", "0.30", "taste-refresh", "Breach when more than this share of top-quartile nuggets is rated 2 or below (trailing 50)"],
+    ["DRIFT_SPEARMAN_MIN", "0.20", "taste-refresh", "Breach when rank correlation over the trailing 50 falls below this"],
+    ["SAMPLE_LIMIT", "200", "taste-refresh", "Open Brain thoughts sampled when distilling the taste profile"],
+  ]},
+  { group: "yt-review", rows: [
+    ["default_ttl_days", "180", "yt-review /data", "Soft-expiry TTL for an unknown or legacy tag; known tags use yt_categories.ttl_days"],
+  ]},
+  { group: "yt-view-sampler (velocity study)", rows: [
+    ["STUDY_START", "2026-08-20", "yt-view-sampler", "Candidates found on or after this date form the cohort"],
+    ["DUE_AGES", "0–10 daily, 14, 21, 30, 45, 60, 90, then monthly", "yt-view-sampler", "Days-since-found on which a view-count snapshot is due"],
+  ]},
+  { group: "yt-viz-backfill (dormant, unscheduled)", rows: [
+    ["BATCH", "20", "yt-viz-backfill", "Nuggets scored per Claude call"],
+    ["PAGE", "400", "yt-viz-backfill", "Candidate rows fetched per select"],
+    ["MAX_BATCHES", "25", "yt-viz-backfill", "Calls per run, under the wall-clock guard"],
+  ]},
+  { group: "yt-backfill (manual)", rows: [
+    ["DEFAULT_MAX", "570", "yt-backfill", "Videos listed when ?max= is omitted (about a year of Nate B Jones)"],
+  ]},
+];
+
+function renderConsts() {
+  let html = "<tr><th>constant</th><th>value</th><th>scope</th><th>impact</th></tr>";
+  for (const g of CODE_CONSTANTS) {
+    html += '<tr><td colspan="4" style="background:var(--card);font-weight:600;padding-top:12px">' + esc(g.group) + "</td></tr>";
+    html += g.rows.map(r => "<tr><td><b>" + esc(r[0]) + "</b></td><td>" + esc(r[1]) + "</td><td>" +
+      esc(r[2]) + "</td><td>" + esc(r[3]) + "</td></tr>").join("");
+  }
+  document.getElementById("consts").innerHTML = html;
+}
+renderConsts();
 
 // Lever writes: separate stronger key, typed once per session on a computer,
 // held in this tab's sessionStorage only. Bounds enforced server-side.
