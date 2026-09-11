@@ -47,8 +47,27 @@
      inapplicable. Applies to selects and buttons alike. */
   .ctl .user-set { border-color: var(--mint); color: var(--mint); }
   .ctl .side-effect { border-color: var(--yellow); color: var(--yellow); }
-  .ctl .na { opacity: .45; }
-  .ctl select:disabled, .ctl button:disabled { opacity: .4; }
+  /* Inapplicable / disabled = sand hue at full brightness with a line-through
+     (Mike, 2026-09-11, greyed-chips b): the fourth chip fill. No opacity —
+     reduced contrast is outlawed. */
+  .ctl .na, .ctl select:disabled, .ctl button:disabled {
+    color: var(--faint); border-color: var(--faint); text-decoration: line-through; opacity: 1; }
+  /* Focus strip (viewer-spec §14, 2026-09-11): one sticky row replacing the
+     header block while state.focus. Pins left (Focus chip, Apply while
+     pending, Mode chip); the subset area scrolls under them. */
+  #strip { display: none; align-items: center; gap: 8px; min-height: 34px; }
+  header.focus #rows { display: none; }
+  header.focus #strip { display: flex; }
+  #stripSub { flex: 1 1 auto; min-width: 0; display: flex; gap: 8px; align-items: center;
+              overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  #stripSub::-webkit-scrollbar { display: none; }
+  #strip button { background: var(--card); color: var(--ink); border: 1px solid var(--line);
+                  border-radius: 8px; padding: 5px 10px; font-size: 13px; flex: none; white-space: nowrap; }
+  #strip button.mode { color: var(--accent); border-color: var(--accent); font-weight: 600; }
+  #strip button.apply { border-color: #e0704e; color: #e0704e; font-weight: 600; }
+  #strip button.user-set { border-color: var(--mint); color: var(--mint); }
+  .stxt { font-size: 13px; white-space: nowrap; flex: none; cursor: pointer; }
+  .stxt b { color: var(--dim); }
   /* The Apply chip: the one load-triggering control (tier 2) — row 3, left
      of Rating, red border, visible only while a load is pending (Mike,
      2026-08-23). */
@@ -152,15 +171,25 @@
 </head>
 <body>
 <header>
-  <div class="chips" id="row1"></div>
-  <div class="chips" id="row2"></div>
-  <!-- Apply is PINNED at row 3's left when a load is pending (Mike,
-       2026-08-23): the rest of the row scrolls UNDER it. -->
-  <div class="bar"><span id="applySlot" style="flex:none"></span><div class="chips" id="row3"></div></div>
-  <!-- Tier-2 playlist builder (spec §9d): commit top-N of the current view. -->
-  <div class="chips" id="rowBuilder"></div>
-  <div id="count"></div>
-  <div id="status"></div>
+  <!-- Focus strip (spec §14): shown INSTEAD of #rows while state.focus. -->
+  <div id="strip" class="bar">
+    <span id="stripFocus" style="flex:none"></span>
+    <span id="stripApply" style="flex:none"></span>
+    <span id="stripMode" style="flex:none"></span>
+    <div id="stripSub"></div>
+  </div>
+  <div id="rows">
+    <!-- Row 1 carries the PINNED Focus chip at its left (spec §14.3.1). -->
+    <div class="bar"><span id="focusSlot" style="flex:none"></span><div class="chips" id="row1"></div></div>
+    <div class="chips" id="row2"></div>
+    <!-- Apply is PINNED at row 3's left when a load is pending (Mike,
+         2026-08-23): the rest of the row scrolls UNDER it. -->
+    <div class="bar"><span id="applySlot" style="flex:none"></span><div class="chips" id="row3"></div></div>
+    <!-- Tier-2 playlist builder (spec §9d): commit top-N of the current view. -->
+    <div class="chips" id="rowBuilder"></div>
+    <div id="count"></div>
+    <div id="status"></div>
+  </div>
   <div id="pbar"></div>
 </header>
 <div id="pane"></div>
@@ -224,7 +253,9 @@ let vizHi = 70, vizLo = 30;
 // on) or the YouTube app (Premium; locked screen; whole-video fallback).
 const DEFAULTS = { scope: "", src: "", cat: "", domain: "", age: "", ratef: "",
   expired: false, listed: "all", played: false, ytRoute: "page", sort: "appeal", dir: "desc", sortOrigin: "user",
-  group: "", zoom: 1 };
+  group: "", zoom: 1,
+  // Focus strip (spec §14): both remembered on the device (strip-default b).
+  focus: false, stripMode: "where" };
 const LISTED = [["all", "All"], ["hidden", "Hide-Qd"], ["audio", "Audio only"], ["video", "Video only"], ["read", "Read only"]]; // "Hide-Qd" = hide items already on any list (Mike's label, 2026-08-23)
 let all = [], slope = 0, intercept = 0;
 let byId = new Map(); // id -> nugget (bodies arrive by id)
@@ -584,6 +615,10 @@ function renderControls() {
   document.getElementById("applySlot").innerHTML = !pending ? "" : '<span class="ctl"><label for="apply">Load</label>' +
     '<button id="apply" class="apply" title="load this scope and source">' +
     (loading ? "loading…" : "Apply" + (applyN != null ? " — " + Number(applyN).toLocaleString() + (applyN === 1 ? " nugget" : " nuggets") : "")) + "</button></span>";
+  // Focus chip (spec §14.3.1): pinned at row 1's left; label = the ACTION
+  // ("focus" collapses the block to the strip); inert until a subset loads.
+  document.getElementById("focusSlot").innerHTML =
+    '<span class="ctl"><label for="cFocus">View</label><button id="cFocus" class="util" title="collapse the controls to a one-row strip">focus</button></span>';
   document.getElementById("row1").innerHTML =
     selectHtml("cScope", "Scope", scopeDefs, state.scope, fillFor("scope")) +
     selectHtml("cSrc", "Source", [["", "All" + fmtN(srcAllN)]].concat(srcDefs), state.src, srcFill) +
@@ -629,10 +664,11 @@ function renderControls() {
   bind("cDomain", "domain");
   bind("cAge", "age");
   // Everything but Scope/Source/Apply is inert until a subset is loaded.
-  for (const id of ["cCat", "cDomain", "cAge", "cGroup", "cFold", "cSort", "cDir", "cRate", "cExp", "cPlayed", "cListed", "zoomIn", "zoomOut"]) {
+  for (const id of ["cCat", "cDomain", "cAge", "cGroup", "cFold", "cSort", "cDir", "cRate", "cExp", "cPlayed", "cListed", "zoomIn", "zoomOut", "cFocus"]) {
     const el = document.getElementById(id);
     if (el) el.disabled = !loadedSel;
   }
+  document.getElementById("cFocus").onclick = () => { state.focus = true; save(); render(); };
   bind("cGroup", "group", () => {
     // Group=Video's default sort is My_rating (CONFIRMED 2026-08-20) — a
     // declared side-effect, yellow until the user touches Sort (P-015).
@@ -655,6 +691,121 @@ function bind(id, prop, after) {
   const el = document.getElementById(id);
   el.onchange = () => { state[prop] = el.value; if (after) after(); touched(); };
 }
+
+// ============================================================================
+// §14 Focus strip (approved 2026-09-11: strip-layout b, strip-position b,
+// strip-default b). One sticky row instead of the header block. Nothing in
+// the strip edits a filter: a filter changed without the other filters in
+// view is the silent-meaning-change §1 guards against — the read-only text
+// expands the rows instead. Headers and cards are untouched (§14.7).
+// ============================================================================
+const STRIP_MODES = ["where", "order", "view"];
+let posIndex = new Map(), posGroup = new Map(), posTotals = { listed: 0, avail: 0, videos: 0 };
+let posNugget = 0, posVideo = null, posRaf = 0, posAttached = false;
+
+// Lowest-granularity selection: the Source value's own label when one is
+// chosen (channel, campaign, or phrase); the Scope name only for "all of".
+function selectionText() {
+  const s = state.src;
+  if (s && facets) {
+    if (s.startsWith("ch:")) {
+      const ch = ((facets.channels || {})[state.scope || "all"] || []).find(c => "ch:" + c.id === s);
+      if (ch) return ch.label;
+    }
+    const camp = (facets.campaigns || []).find(c => s === "c:" + c.id || s.startsWith("q:" + c.id + "|"));
+    if (camp) return s.startsWith("c:") ? "all of " + camp.name : "“" + s.slice(s.indexOf("|") + 1) + "”";
+  }
+  return (SCOPES.find(x => x[0] === (state.scope || "")) || ["", "All"])[1];
+}
+// Judgment filters not at their default, in row-3 order.
+function judgmentText() {
+  const out = [];
+  if (state.ratef) out.push((RATEFS.find(r => r[0] === state.ratef) || [])[1] || state.ratef);
+  if (state.expired) out.push("expired shown");
+  if (state.played) out.push("played shown");
+  if (state.listed !== "all") out.push((LISTED.find(l => l[0] === state.listed) || [])[1] || state.listed);
+  return out.join(" · ");
+}
+function posText() {
+  const vid = state.group === "video" && posVideo ? "video " + posVideo + " of " + posTotals.videos + " · " : "";
+  return vid + (posNugget || "–") + " of " + posTotals.listed + " listed / " + posTotals.avail + " available";
+}
+
+function renderStrip() {
+  const mode = STRIP_MODES.includes(state.stripMode) ? state.stripMode : "where";
+  document.getElementById("stripFocus").innerHTML =
+    '<button id="sFocus" title="expand the control rows">controls</button>';
+  const pending = applyPending(), applyN = selectionCount();
+  document.getElementById("stripApply").innerHTML = !pending ? "" :
+    '<button id="sApply" class="apply" title="load this scope and source">' +
+    (loading ? "loading…" : "Apply" + (applyN != null ? " — " + Number(applyN).toLocaleString() : "")) + "</button>";
+  document.getElementById("stripMode").innerHTML =
+    '<button id="sMode" class="mode" title="cycle: where → order → view">' + mode + "</button>";
+  let sub = "";
+  if (mode === "where") {
+    const jt = judgmentText();
+    sub = '<span class="stxt" id="sSel" title="tap to open the controls"><b>' + esc(selectionText()) + "</b>" +
+      (jt ? " · " + esc(jt) : "") + "</span>" +
+      '<span class="stxt" id="sPos" title="position in the listed order">' + esc(posText()) + "</span>";
+  } else if (mode === "order") {
+    const sortLab = (SORTS.find(s => s[0] === state.sort) || [])[1] || state.sort;
+    sub = '<span class="stxt" id="sSel" title="tap to open the controls"><b>' + esc(sortLab) + "</b> " +
+      (state.dir === "asc" ? "▲" : "▼") + (state.group === "video" ? " · by video" : "") + "</span>" +
+      (state.group
+        ? '<button id="sFold" class="' + (collapseMode ? "user-set" : "") + '" title="fold or unfold every group">' +
+          (collapseMode ? "expand" : "collapse") + "</button>"
+        : "");
+  } else {
+    sub = '<button id="sZoomOut" title="smaller text">A−</button><button id="sZoomIn" title="larger text">A+</button>' +
+      (state.listed !== "all"
+        ? '<span class="stxt" id="sSel" title="tap to open the controls">List as <b>' +
+          esc((LISTED.find(l => l[0] === state.listed) || [])[1]) + "</b></span>"
+        : "");
+  }
+  document.getElementById("stripSub").innerHTML = sub;
+  document.getElementById("sFocus").onclick = () => { state.focus = false; save(); render(); };
+  const ap = document.getElementById("sApply");
+  if (ap) ap.onclick = () => { if (!loading) loadData(); };
+  document.getElementById("sMode").onclick = () => {
+    state.stripMode = STRIP_MODES[(STRIP_MODES.indexOf(mode) + 1) % STRIP_MODES.length]; save(); renderStrip();
+  };
+  const sel = document.getElementById("sSel");
+  if (sel) sel.onclick = () => { state.focus = false; save(); render(); };
+  const fold = document.getElementById("sFold");
+  if (fold) fold.onclick = () => { collapseMode = !collapseMode; gToggled = new Set(); render(); };
+  const zi = document.getElementById("sZoomIn"), zo = document.getElementById("sZoomOut");
+  if (zi) zi.onclick = () => zoomStep(1);
+  if (zo) zo.onclick = () => zoomStep(-1);
+  posAttach();
+}
+
+// Position observer (§14.3.7): first card or group header whose top edge is
+// at or below the strip's bottom edge; rAF-throttled; text updated in place.
+function posAttach() { if (!posAttached) { window.addEventListener("scroll", posSchedule, { passive: true }); posAttached = true; } posSchedule(); }
+function posDetach() { if (posAttached) { window.removeEventListener("scroll", posSchedule); posAttached = false; } }
+function posSchedule() { if (!posRaf) posRaf = requestAnimationFrame(posUpdate); }
+function posUpdate() {
+  posRaf = 0;
+  const bottom = document.querySelector("header").getBoundingClientRect().bottom - 1;
+  let nug = 0, vid = null;
+  for (const el of document.querySelectorAll("#list .card[id^=card-], #list .ghead")) {
+    if (el.getBoundingClientRect().top < bottom) continue;
+    if (el.classList.contains("ghead")) {
+      vid = posGroup.get(el.dataset.vid) || null;
+      const first = el.nextElementSibling && el.nextElementSibling.querySelector(".card[id^=card-]");
+      nug = first ? (posIndex.get(first.id.slice(5)) || 0) : 0;
+    } else {
+      const id = el.id.slice(5);
+      nug = posIndex.get(id) || 0;
+      const n = byId.get(id);
+      vid = n ? (posGroup.get(n.video_id) || null) : null;
+    }
+    break;
+  }
+  posNugget = nug; posVideo = vid;
+  const sp = document.getElementById("sPos");
+  if (sp) sp.textContent = posText();
+}
 // Any filter/sort/group change: persist, drop pins and acknowledgments
 // (views stay honest), re-render.
 function touched() { pinned.clear(); toasts.clear(); paintLimit = WINDOW; save(); render(); }
@@ -662,6 +813,11 @@ function touched() { pinned.clear(); toasts.clear(); paintLimit = WINDOW; save()
 function render() {
   renderControls();
   statusVisibility();
+  // Focus strip (spec §14): only once a subset is loaded — before that the
+  // rows stay open because the Apply chip needs its row.
+  const focus = !!(state.focus && loadedSel);
+  document.querySelector("header").classList.toggle("focus", focus);
+  if (focus) renderStrip(); else posDetach();
   if (!loadedSel) {
     document.getElementById("count").textContent = facets
       ? "choose Scope and Source, then tap Apply"
@@ -676,6 +832,13 @@ function render() {
   renderPlayerBar(v);
   renderBuilderRow(v);
   const avail = all.filter(judgmentPass).length;
+  // Position basis for the strip (spec §14.3.7): listed order by id, and in
+  // grouped mode each video's 1-based index among the listed videos.
+  posIndex = new Map(v.map((n, i) => [n.id, i + 1]));
+  posGroup = new Map();
+  if (state.group === "video") for (const n of v) if (!posGroup.has(n.video_id)) posGroup.set(n.video_id, posGroup.size + 1);
+  posTotals = { listed: v.length, avail, videos: posGroup.size };
+  if (focus) posUpdate();
   document.getElementById("count").textContent =
     (applyPending() ? "selection changed — tap Apply to load · showing " + (SCOPES.find(s => s[0] === loadedSel.scope) || ["", "All"])[1] + " · " : "") +
     v.length + " listed / " + avail + " available" +
@@ -1363,7 +1526,7 @@ function ghead(n, g) {
   const hype = n.hypeLevel != null
     ? '<span class="chip">hype ' + (n.hypeLevel > 0 ? "+" : "") + n.hypeLevel + "</span>" : "";
   const gen = n.generation > 1 ? '<span class="chip" title="reprocessed generation">(' + n.generation + ")</span>" : "";
-  return '<div class="ghead">' +
+  return '<div class="ghead" data-vid="' + esc(n.video_id) + '">' +
     '<div class="gtitle" onclick="toggleGroup(\'' + n.video_id + '\')">' +
       (isC ? "&#9656; " : "&#9662; ") + esc(humble) + "</div>" +
     (n.videoTitle && n.videoTitle !== humble
