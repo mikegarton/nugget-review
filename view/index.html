@@ -618,7 +618,7 @@ function renderControls() {
   // Focus chip (spec §14.3.1): pinned at row 1's left; label = the ACTION
   // ("focus" collapses the block to the strip); inert until a subset loads.
   document.getElementById("focusSlot").innerHTML =
-    '<span class="ctl"><label for="cFocus">View</label><button id="cFocus" class="util" title="collapse the controls to a one-row strip">focus</button></span>';
+    '<span class="ctl"><label for="cFocus">View</label><button id="cFocus" title="collapse the controls to a one-row strip">focus</button></span>';
   document.getElementById("row1").innerHTML =
     selectHtml("cScope", "Scope", scopeDefs, state.scope, fillFor("scope")) +
     selectHtml("cSrc", "Source", [["", "All" + fmtN(srcAllN)]].concat(srcDefs), state.src, srcFill) +
