@@ -8,7 +8,10 @@
 <style>
   :root {
     --bg: #101114; --card: #1a1c21; --card2: #22252c; --line: #2c3038;
-    --ink: #e8e8e6; --dim: #9a9da5; --accent: #5aa8f0; --gold: #e0b34e;
+    /* No reduced-contrast text anywhere (Mike, 2026-09-11): secondary text is
+       a different HUE at full brightness, never a greyer one. --dim keeps its
+       name because every secondary element references it. */
+    --ink: #e8e8e6; --dim: #bfe3ff; --accent: #5aa8f0; --gold: #e0b34e;
     --good: #6fc48d; --orange: #e5893f; --bad: #e25555;
   }
   * { box-sizing: border-box; margin: 0; }
@@ -45,7 +48,8 @@
   tr:last-child td { border-bottom: none; }
   td { font-variant-numeric: tabular-nums; }
   .hot { color: var(--gold); }
-  .dim { color: var(--dim); font-size: 11.5px; font-weight: 400; }
+  .dim { color: var(--dim); font-weight: 400; }
+  .grp td { color: var(--accent); font-size: 15px; font-weight: 700; padding-top: 14px; }
   select {
     background: var(--card); color: var(--ink); border: 1px solid var(--line);
     border-radius: 8px; padding: 4px 6px; font-size: 13px; margin-bottom: 8px;
@@ -553,14 +557,14 @@ function renderKnobs() {
   for (const g of KNOB_GROUPS) {
     const rows = g.keys.filter(k => byKey.has(k));
     if (!rows.length) continue;
-    html += '<tr><td colspan="4" style="background:var(--card);font-weight:600;padding-top:12px">' +
-      esc(g.title) + ' <span class="dim">— read by ' + esc(g.scope) + "</span></td></tr>";
+    html += '<tr class="grp"><td colspan="4">' +
+      esc(g.title) + ' <span class="dim" style="font-weight:400">— read by ' + esc(g.scope) + "</span></td></tr>";
     for (const k of rows) { html += knobRow(byKey.get(k)); placed.add(k); }
   }
   const rest = params.filter(p => !placed.has(p.key)).sort((a, b) => a.key.localeCompare(b.key));
   if (rest.length) {
-    html += '<tr><td colspan="4" style="background:var(--card);font-weight:600;padding-top:12px">Ungrouped' +
-      ' <span class="dim">— new rows not yet placed in a group above</span></td></tr>';
+    html += '<tr class="grp"><td colspan="4">Ungrouped' +
+      ' <span class="dim" style="font-weight:400">— new rows not yet placed in a group above</span></td></tr>';
     html += rest.map(knobRow).join("");
   }
   document.getElementById("knobs").innerHTML = html;
@@ -623,7 +627,7 @@ const CODE_CONSTANTS = [
 function renderConsts() {
   let html = "<tr><th>constant</th><th>value</th><th>scope</th><th>impact</th></tr>";
   for (const g of CODE_CONSTANTS) {
-    html += '<tr><td colspan="4" style="background:var(--card);font-weight:600;padding-top:12px">' + esc(g.group) + "</td></tr>";
+    html += '<tr class="grp"><td colspan="4">' + esc(g.group) + "</td></tr>";
     html += g.rows.map(r => "<tr><td><b>" + esc(r[0]) + "</b></td><td>" + esc(r[1]) + "</td><td>" +
       esc(r[2]) + "</td><td>" + esc(r[3]) + "</td></tr>").join("");
   }
