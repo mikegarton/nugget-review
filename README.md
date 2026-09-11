@@ -94,6 +94,17 @@ leads with **All** as its default; "Any" is retired. Choices persist in
 modifies another sits to its left; meaning-changers fill the no-scroll
 zone; frequency orders the rest; utilities last.
 
+- **Focus strip (viewer-spec §14, 2026-09-11)**: the **focus** button
+  pinned at row 1's left collapses the three rows, the count line and the
+  status line into one sticky row for read-and-rate sessions. The strip
+  pins **controls** (back to the rows), the red Apply while a load is
+  pending, and a mode button that cycles three subsets: *where* (the
+  lowest-granularity selection, judgment filters as text, and position
+  "n of L listed / A available", prefixed "video g of G" when grouped),
+  *order* (sort + direction + group as text, the live Headers fold chip),
+  *view* (the live A−/A+ pair, the List-as mode as text). Nothing in the
+  strip edits a filter — tapping its text reopens the rows. Focus and mode
+  are remembered per device. Headers and cards are untouched.
 - **Row 1 — content**: Scope (All · YT-subscrip · Substack · My adds ·
   Campaign — provenance only, no group privileged; "YT-subscrip" (key
   `yt_subscribed`) = your subscribed YouTube channels, neither
