@@ -65,10 +65,14 @@ Spec of record: `working_docs/projects/nugget-review/viewer-spec.md` draft 6
 — every control documented desc / args / pre / modifies / post, written
 before the code, plus the controls-by-state-variables matrix.
 
-1. Filter and sort the abstracts, read them, rate them. The stars rate the
-   **abstract** — ONE rating column; there is no video rating (Mike,
-   2026-08-22). Scale: 1 never gonna look · 2 unlikely to use · 3 didn't
-   regret · 4 good · 5 outstanding. Tap the same star again to clear.
+1. Filter and sort the abstracts, read them, rate them. Three independent
+   star rows, one per reading depth (Mike, 2026-09-17; viewer-spec §15):
+   header stars rate the title card (`yt_videos.med_ai_hl_rating`),
+   card-line stars rate the headline (`yt_nuggets.nug_ai_hl_rating`),
+   expanded-card stars rate the abstract (`yt_nuggets.nug_ai_abstract_rating`,
+   the only level that pickles, filters or sorts). Scale: 1 never gonna
+   look · 2 unlikely to use · 3 didn't regret · 4 good · 5 outstanding.
+   Tap the same star again to clear.
 2. **1–2★ = pickled**: the card shows "pickled — hidden from the default
    view (kept; find it under Rating → Pickled)", then leaves the default
    view. Nothing is ever deleted (the old 1★ purge is retired); pickled

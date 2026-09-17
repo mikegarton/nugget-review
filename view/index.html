@@ -151,6 +151,7 @@
   .stars button.lit { color: var(--gold); }
   .chip.res { font-size: 14px; color: var(--gold); }
   .gstars button { font-size: 20px; padding: 2px 3px; }
+  .hlstars button { font-size: 15px; padding: 0 1px; line-height: 1; }
   .rnote { margin-top: 8px; font-size: 12px; color: var(--faint); }
   .toast { background: var(--card2); border: 1px solid var(--gold); color: var(--gold);
            border-radius: 10px; padding: 6px 10px; font-size: 13px; margin-top: 8px; }
@@ -226,7 +227,7 @@ const SORTS = [
   ["coach",      "Coach",      n => n.expert_score],
   ["broccoli",   "Broccoli",   n => residual(n)],
   ["needs_viz",  "Needs-viz",  n => n.needsViz],
-  ["my_rating",  "My_rating",  n => n.rating],
+  ["my_rating",  "My_rating",  n => n.nugAbstractRating],
   ["yt_views",   "YT_views",   n => n.viewCount],
   ["duration",   "Duration",   n => n.durationSeconds],
   ["date_pub",   "Date-pub",   n => ts(n.publishedAt || n.created_at)],
@@ -236,8 +237,11 @@ const SORTS = [
   ["date_rev",   "Date-rev",   n => ts(n.reviewedAt)],
 ];
 const RATEFS = [["","All"],["unrated","Unrated"],["5","5 ★"],["4","≥ 4 ★"],["3","3 ★"],["pickled","Pickled (1–2 ★)"],["keepers","Keepers"]];
-// yt_nuggets.rating column comment is the source of truth for this scale.
-// One column, the abstract's rating (Mike, 2026-08-22); 1-2 = pickled.
+// yt_nuggets.nug_ai_abstract_rating column comment is the source of truth
+// for this scale. Three independent levels (spec §15, 2026-09-17): header
+// stars = yt_videos.med_ai_hl_rating (title card), card-line stars =
+// nug_ai_hl_rating (headline), expanded stars = nug_ai_abstract_rating
+// (abstract). Only the abstract level drives pickled / open / filters / sort.
 const SCALE = { 1: "never gonna look (pickled)", 2: "unlikely to use (pickled)",
   3: "neutral / did not regret", 4: "good", 5: "outstanding" };
 const END_MARGIN = 30; // display clamp: a link never lands past duration − 30 s (spec §7.2)
@@ -342,7 +346,7 @@ function categoriesOf(n) {
 }
 
 // ---- derived predicates (spec §2) ----------------------------------------
-function pickled(n) { return n.rating != null && n.rating <= 2; }
+function pickled(n) { return n.nugAbstractRating != null && n.nugAbstractRating <= 2; }
 function queued(n) { return !!(n.queueList || n.queuedAt); } // on any list
 // Post-shaped content: any non-YouTube source (posts carry bodies, YouTube
 // carries transcripts). A shape test, not a source list — every source gets
@@ -363,7 +367,7 @@ function listsFor() { return ["audio", "video", "read"]; }
 // tags. Returns the trigger {tag, days} so the badge can name WHICH tag's
 // TTL fired (Automatic behavior shows its trigger), or null.
 function expiry(n) {
-  if (n.rating != null) return null;
+  if (n.nugAbstractRating != null) return null;
   const cats = categoriesOf(n);
   if (!cats.length) return null;
   let tag = null, ttl = -1;
@@ -400,10 +404,10 @@ function ratingFilterPass(n) {
   const r = state.ratef;
   if (r === "pickled") return pickled(n);
   if (r === "keepers" && !n.keeperAt) return false;
-  if (r === "unrated" && n.rating != null) return false;
-  if (r === "5" && n.rating !== 5) return false;
-  if (r === "4" && !(n.rating >= 4)) return false;
-  if (r === "3" && n.rating !== 3) return false;
+  if (r === "unrated" && n.nugAbstractRating != null) return false;
+  if (r === "5" && n.nugAbstractRating !== 5) return false;
+  if (r === "4" && !(n.nugAbstractRating >= 4)) return false;
+  if (r === "3" && n.nugAbstractRating !== 3) return false;
   return true;
 }
 function judgmentPass(n) {
@@ -471,7 +475,7 @@ function facetCounts() {
     if (j && sc && sr && ca && ag) { bump(F.domain, ""); if (n.domain) bump(F.domain, n.domain); }
     if (j && sc && sr && ca && dm) { bump(F.age, ""); const d = ageDays(n); for (const [val] of AGES) if (val && d <= Number(val)) bump(F.age, val); }
     if (jx && sc && sr && ca && dm && ag) {
-      const r = n.rating;
+      const r = n.nugAbstractRating;
       if (pickled(n)) bump(F.rating, "pickled");
       else {
         bump(F.rating, "");
@@ -1518,10 +1522,9 @@ function scoreStrip(n) {
 function ghead(n, g) {
   const isC = isGroupCollapsed(n.video_id);
   const dur = n.durationSeconds ? " in " + fmtDur(n.durationSeconds) : "";
-  // Header stars light to the group's lowest rating (unrated = 0): a fully
-  // rated group reads at a glance, a mixed one stays dark. They are a BULK
-  // control over the group's abstracts — there is no video rating.
-  const gmin = Math.min(...g.map(x => x.rating || 0));
+  // Header stars = the title-card rating, yt_videos.med_ai_hl_rating (spec
+  // §15.3.1, 2026-09-17). One value per video or post; touches no nugget.
+  const medRating = n.medHlRating || 0;
   const humble = n.plainTitle || n.headline || n.videoTitle || n.channelLabel;
   const hype = n.hypeLevel != null
     ? '<span class="chip">hype ' + (n.hypeLevel > 0 ? "+" : "") + n.hypeLevel + "</span>" : "";
@@ -1536,8 +1539,8 @@ function ghead(n, g) {
       "<span>" + fmtD(n.publishedAt || n.created_at) + "</span>" +
       '<span class="chip">' + g.length + " nuggets" + dur + "</span>" + hype + gen + campaignChips(n) +
       '<div class="stars gstars">' + [1,2,3,4,5].map(k =>
-        '<button title="' + k + ' — ' + SCALE[k] + ' (rates every unrated nugget; re-tap corrects a uniformly rated group)" class="' +
-          (gmin >= k ? "lit" : "") + '" onclick="rateAll(\'' + n.video_id + '\',' + k + ')">&#9733;</button>'
+        '<button title="' + k + ' — ' + SCALE[k] + ' (rates this title card; tap again to clear)" class="' +
+          (medRating >= k ? "lit" : "") + '" onclick="rateMed(\'' + n.video_id + '\',' + k + ')">&#9733;</button>'
       ).join("") + "</div>" +
       groupListButtons(n.video_id, g) +
       '<a class="watch gwatch" target="_blank" rel="noopener" href="' +
@@ -1556,26 +1559,20 @@ function toggleGroup(vid) {
   render();
 }
 
-// Header stars rate every *unrated* nugget in the group; mixed individual
-// ratings are never overwritten; a uniformly rated group stays correctable
-// from the header (different star re-rates, same star clears).
-async function rateAll(vid, k) {
+// Header stars write the title-card rating (level 1). The value is
+// denormalized onto every nugget of the video at load, so all of them are
+// updated here; no nugget column changes and nothing is hidden or re-sorted.
+async function rateMed(vid, k) {
   const g = all.filter(x => x.video_id === vid);
-  let targets = g.filter(x => x.rating == null);
-  let next = k;
-  if (!targets.length) {
-    const first = g[0] && g[0].rating;
-    if (!g.every(x => x.rating === first)) return; // mixed: hands off
-    targets = g;
-    next = first === k ? null : k;
-  }
-  for (const n of targets) { n.rating = next; pinned.add(n.id); if (next != null && next <= 2) toasts.set(n.id, PICKLE_ACK); }
+  const cur = g[0] ? g[0].medHlRating : null;
+  const next = cur === k ? null : k; // tap the same star again to clear
+  for (const n of g) n.medHlRating = next;
   render();
-  for (const n of targets) await post("/rate", { id: n.id, rating: next });
+  await post("/rate", { level: "med_hl", id: vid, rating: next });
 }
 
 // Header A/V (bulk): every nugget already on that list -> clear all;
-// otherwise put every UNLISTED nugget on it (mirror of the rateAll asymmetry;
+// otherwise put every UNLISTED nugget on it (the bulk asymmetry: fill the unset, clear only when uniform;
 // nuggets already on another list are left alone).
 async function setListAll(vid, key) {
   const g = all.filter(x => x.video_id === vid);
@@ -1751,7 +1748,10 @@ function card(n) {
         ? '<span class="chip" style="color:var(--accent)">manual add</span>' : "") +
       campaignChips(n) +
       scoreStrip(n) +
-      (n.rating ? '<span class="chip" style="color:var(--gold)">&#9733;' + n.rating + "</span>" : "") +
+      (n.nugAbstractRating ? '<span class="chip" style="color:var(--gold)" title="abstract rating">&#9733;' + n.nugAbstractRating + "</span>" : "") +
+      '<div class="stars hlstars" title="headline rating (level 2) — no filter or sort effect">' + [1,2,3,4,5].map(k =>
+        '<button title="' + k + ' — ' + SCALE[k] + ' (rates the headline; tap again to clear)" class="' + (n.nugHlRating >= k ? "lit" : "") + '" onclick="rateHl(\'' + n.id + '\',' + k + ')">&#9733;</button>'
+      ).join("") + "</div>" +
       (n.playedAt ? '<button class="chip" style="border:none;cursor:pointer;color:var(--dim)" title="a list renderer finished this — tap to mark unplayed" onclick="togglePlayed(\'' + n.id + '\')">played</button>' : "") +
       listButtons(n) +
       '<button class="lb kb' + (n.keeperAt ? " on" : "") + '" title="Keeper: I expect to use this idea near or mid-term' + (n.keeperAt ? " — tap to clear" : "") + '" onclick="setKeeper(\'' + n.id + "')\">K</button>" +
@@ -1767,19 +1767,20 @@ function card(n) {
       '<div class="actions">' +
         '<a class="watch" target="_blank" rel="noopener" href="' + link + '">' + watchLabel + "</a>" +
         '<div class="stars">' + [1,2,3,4,5].map(k =>
-          '<button title="' + k + ' — ' + SCALE[k] + '" class="' + (n.rating >= k ? "lit" : "") + '" onclick="rate(\'' + n.id + '\',' + k + ')">&#9733;</button>'
+          '<button title="' + k + ' — ' + SCALE[k] + ' (rates the abstract)" class="' + (n.nugAbstractRating >= k ? "lit" : "") + '" onclick="rate(\'' + n.id + '\',' + k + ')">&#9733;</button>'
         ).join("") + "</div>" +
       "</div>" +
       '<div class="rnote">' + rnote(n) + "</div>" +
     "</div></div>";
 }
 
-// Legend under the stars: the stars rate the abstract — the only rating.
+// Legend under the expanded stars: names the level (spec §15.3.4).
 function rnote(n) {
   const pre = n.campaignId ? "prospect · ratings teach the campaign<br>" : "";
   const lists = "A = listen · V = watch · R = read · K = keeper (dashed = suggested)";
-  if (!n.rating) return pre + "stars rate the abstract · 1–2 pickles it (kept, hidden) · " + lists;
-  return pre + "&#9733;" + n.rating + " — " + SCALE[n.rating] + " · " + lists;
+  const levels = "headline stars are on the card line · title-card stars are on the header";
+  if (!n.nugAbstractRating) return pre + "stars rate the abstract · 1–2 pickles it (kept, hidden) · " + levels + " · " + lists;
+  return pre + "&#9733;" + n.nugAbstractRating + " — " + SCALE[n.nugAbstractRating] + " (abstract) · " + levels + " · " + lists;
 }
 
 function toggle(id) {
@@ -1802,13 +1803,22 @@ async function post(path, body) {
       "\nThe change you just made was not stored - reload and retry.");
   }
 }
+// Level 3: the abstract — the only level that pickles, filters or sorts.
 async function rate(id, k) {
   const n = all.find(x => x.id === id);
-  const next = n.rating === k ? null : k; // tap the same star again to clear
-  n.rating = next; pinned.add(id);
+  const next = n.nugAbstractRating === k ? null : k; // tap the same star again to clear
+  n.nugAbstractRating = next; pinned.add(id);
   if (next != null && next <= 2) toasts.set(id, PICKLE_ACK); else toasts.delete(id);
   render();
-  await post("/rate", { id, rating: next });
+  await post("/rate", { level: "nug_abstract", id, rating: next });
+}
+// Level 2: the headline — pure record, no visibility or order effect.
+async function rateHl(id, k) {
+  const n = all.find(x => x.id === id);
+  const next = n.nugHlRating === k ? null : k;
+  n.nugHlRating = next;
+  render();
+  await post("/rate", { level: "nug_hl", id, rating: next });
 }
 // Keeper (§13.3): a disposition after consuming; separate from the stars.
 async function setKeeper(id) {
@@ -1973,6 +1983,9 @@ async function loadData() {
       durationSeconds: v.duration_seconds ?? null,
       viewCount: v.view_count ?? null,
       needsViz: n.needs_viz ?? null,
+      nugAbstractRating: n.nug_ai_abstract_rating ?? null, // level 3 (spec §15)
+      nugHlRating: n.nug_ai_hl_rating ?? null,             // level 2
+      medHlRating: v.med_ai_hl_rating ?? null,             // level 1, per video/post
       queuedAt: n.queued_at || null,
       queueList: n.queue_list || null,
       playedAt: n.played_at || null,
