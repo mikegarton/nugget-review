@@ -380,11 +380,14 @@ function render() {
       });
     }
   }
+  // daily_video_cap is retired (2026-08-03); the per-campaign cadence shown is
+  // the shared campaign_search_interval_days (Mike 2026-09-18, d12 a).
+  const searchEvery = pmap.get("campaign_search_interval_days");
   budgets.forEach(b => {
     rows.push({
       name: 'Transcript pulls — campaign "' + b.name + '"', type: "ceiling",
       sub: b.status + " · tier " + b.tier + " · " + b.videos_pending + " pending · " +
-        b.videos_processed + " processed · promotes ≤" + b.daily_video_cap + "/day — its slice of the cycle credits above",
+        b.videos_processed + " processed · searches every " + (searchEvery ?? "?") + " days — its slice of the cycle credits above",
       used: b.supadata_used_cycle, usedText: String(b.supadata_used_cycle),
       quota: b.supadata_cap_per_cycle, quotaText: String(b.supadata_cap_per_cycle),
       elapsed: cycFrac, resets: "with cycle",
