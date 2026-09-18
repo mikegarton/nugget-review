@@ -11,6 +11,14 @@
     --ink: #e8e8e6; --dim: #bfe3ff; --faint: #ead9b0; /* no reduced-contrast text (Mike, 2026-09-11): secondary = pale blue, tertiary = pale sand, both at ink brightness */
     --accent: #5aa8f0; --gold: #e0b34e; --good: #6fc48d;
     --mint: #7fe3b0; --yellow: #ffd166;
+    /* Unselected rating star (spec §16, Mike 2026-09-18): an outline in a dim
+       beige — pale sand's hue (42°) at 45% lightness, 30% saturation — so an
+       unrated row never reads as five gold stars. The one named exception to
+       the no-reduced-contrast rule; used by .stars only. */
+    --star-unselected-outline: #958150;
+    /* Outline thickness in units of the star's 24-unit box: 1.8 draws about
+       1.1 px on the 15 px card-line star and 1.8 px on the 24 px expanded star. */
+    --star-outline-width-in-24-unit-box: 1.8;
   }
   * { box-sizing: border-box; margin: 0; }
   body {
@@ -88,7 +96,9 @@
   .card.hot1 { border-left: 4px solid var(--good); }
   .card.hot2 { border-left: 4px solid var(--gold); }
   .hl { font-weight: 600; cursor: pointer; }
-  .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; font-size: 12px; color: var(--dim); }
+  /* Every strip that carries rating stars is ONE right-justified group with
+     the stars last (spec §16.1): the stars are the widget nearest the right thumb. */
+  .meta { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; align-items: center; margin-top: 6px; font-size: 12px; color: var(--dim); }
   .chip { background: var(--card2); border-radius: 10px; padding: 1px 8px; }
   .chip.exp { background: none; border: 1px dashed var(--faint); color: var(--faint); }
   .score { font-variant-numeric: tabular-nums; }
@@ -134,7 +144,7 @@
   .card.open .body { display: block; }
   .content { white-space: pre-wrap; }
   .rationale { margin-top: 8px; font-size: 15px; color: var(--gold); }
-  .actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
   .watch {
     display: inline-block; background: var(--accent); color: #08131f;
     border-radius: 8px; padding: 8px 14px; text-decoration: none; font-weight: 600; font-size: 14px;
@@ -145,10 +155,17 @@
   button.spbtn:disabled { opacity: 0.6; cursor: default; }
   .stars { display: flex; gap: 2px; }
   .stars button {
-    background: none; border: none; font-size: 24px; color: var(--faint);
+    background: none; border: none; font-size: 24px;
     padding: 2px 4px; line-height: 1;
   }
-  .stars button.lit { color: var(--gold); }
+  /* One shape, two states (spec §16.2): unselected = dim beige outline,
+     selected = solid gold; same geometry, so a tap shifts nothing. */
+  .stars svg {
+    display: block; width: 1em; height: 1em; fill: none;
+    stroke: var(--star-unselected-outline);
+    stroke-width: var(--star-outline-width-in-24-unit-box); stroke-linejoin: round;
+  }
+  .stars button.lit svg { fill: var(--gold); stroke: var(--gold); }
   .chip.res { font-size: 14px; color: var(--gold); }
   .gstars button { font-size: 20px; padding: 2px 3px; }
   .hlstars button { font-size: 15px; padding: 0 1px; line-height: 1; }
@@ -161,7 +178,7 @@
   }
   .ghead .gtitle { font-weight: 600; cursor: pointer; }
   .ghead .ytitle { margin-top: 2px; font-size: 13px; color: var(--ink); }
-  .gmeta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 5px; font-size: 12px; color: var(--dim); }
+  .gmeta { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; align-items: center; margin-top: 5px; font-size: 12px; color: var(--dim); }
   .gwatch { padding: 5px 10px; font-size: 13px; }
   .gcards {
     display: flex; flex-direction: column; gap: 6px;
@@ -171,6 +188,8 @@
 </style>
 </head>
 <body>
+<!-- The rating star's one shape (spec §16.2); every star button references it. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="star5" viewBox="0 0 24 24"><path d="M12 2.6l2.9 6.2 6.8.8-5 4.7 1.3 6.7-6-3.3-6 3.3 1.3-6.7-5-4.7 6.8-.8z"/></symbol></svg>
 <header>
   <!-- Focus strip (spec §14): shown INSTEAD of #rows while state.focus. -->
   <div id="strip" class="bar">
@@ -244,6 +263,7 @@ const RATEFS = [["","All"],["unrated","Unrated"],["5","5 ★"],["4","≥ 4 ★"]
 // (abstract). Only the abstract level drives pickled / open / filters / sort.
 const SCALE = { 1: "never gonna look (pickled)", 2: "unlikely to use (pickled)",
   3: "neutral / did not regret", 4: "good", 5: "outstanding" };
+const STAR = '<svg aria-hidden="true"><use href="#star5"/></svg>'; // one star, styled by .stars / .lit (spec §16.2)
 const END_MARGIN = 30; // display clamp: a link never lands past duration − 30 s (spec §7.2)
 // Destination lists (2026-08-23): exactly one per nugget; the suggestion
 // (dashed outline) follows the data — posts -> R; needs_viz >= viz_hi -> V;
@@ -1538,10 +1558,6 @@ function ghead(n, g) {
       "<b>" + esc(n.channelLabel) + "</b>" +
       "<span>" + fmtD(n.publishedAt || n.created_at) + "</span>" +
       '<span class="chip">' + g.length + " nuggets" + dur + "</span>" + hype + gen + campaignChips(n) +
-      '<div class="stars gstars">' + [1,2,3,4,5].map(k =>
-        '<button title="' + k + ' — ' + SCALE[k] + ' (rates this title card; tap again to clear)" class="' +
-          (medRating >= k ? "lit" : "") + '" onclick="rateMed(\'' + n.video_id + '\',' + k + ')">&#9733;</button>'
-      ).join("") + "</div>" +
       groupListButtons(n.video_id, g) +
       '<a class="watch gwatch" target="_blank" rel="noopener" href="' +
         (isPostSource(n) ? esc(n.contentUrl || "#") : "https://www.youtube.com/watch?v=" + n.video_id) + '">' +
@@ -1551,6 +1567,11 @@ function ghead(n, g) {
           '" title="subscribe to this channel in YouTube AND adopt it into the pipeline&#39;s subscribed stream (future uploads polled hourly)"' +
           ' onclick="subscribeCh(\'' + esc(n.channelId) + "','" + esc(n.video_id) + '\')">+ Subscribe</button>' : "") +
       phraseControl(n) + unsubControls(n) +
+      // Stars LAST in the right-justified strip (spec §16.1).
+      '<div class="stars gstars">' + [1,2,3,4,5].map(k =>
+        '<button title="' + k + ' — ' + SCALE[k] + ' (rates this title card; tap again to clear)" class="' +
+          (medRating >= k ? "lit" : "") + '" onclick="rateMed(\'' + n.video_id + '\',' + k + ')">' + STAR + '</button>'
+      ).join("") + "</div>" +
     "</div></div>";
 }
 
@@ -1749,12 +1770,13 @@ function card(n) {
       campaignChips(n) +
       scoreStrip(n) +
       (n.nugAbstractRating ? '<span class="chip" style="color:var(--gold)" title="abstract rating">&#9733;' + n.nugAbstractRating + "</span>" : "") +
-      '<div class="stars hlstars" title="headline rating (level 2) — no filter or sort effect">' + [1,2,3,4,5].map(k =>
-        '<button title="' + k + ' — ' + SCALE[k] + ' (rates the headline; tap again to clear)" class="' + (n.nugHlRating >= k ? "lit" : "") + '" onclick="rateHl(\'' + n.id + '\',' + k + ')">&#9733;</button>'
-      ).join("") + "</div>" +
       (n.playedAt ? '<button class="chip" style="border:none;cursor:pointer;color:var(--dim)" title="a list renderer finished this — tap to mark unplayed" onclick="togglePlayed(\'' + n.id + '\')">played</button>' : "") +
       listButtons(n) +
       '<button class="lb kb' + (n.keeperAt ? " on" : "") + '" title="Keeper: I expect to use this idea near or mid-term' + (n.keeperAt ? " — tap to clear" : "") + '" onclick="setKeeper(\'' + n.id + "')\">K</button>" +
+      // Stars LAST in the right-justified strip (spec §16.1).
+      '<div class="stars hlstars" title="headline rating (level 2) — no filter or sort effect">' + [1,2,3,4,5].map(k =>
+        '<button title="' + k + ' — ' + SCALE[k] + ' (rates the headline; tap again to clear)" class="' + (n.nugHlRating >= k ? "lit" : "") + '" onclick="rateHl(\'' + n.id + '\',' + k + ')">' + STAR + '</button>'
+      ).join("") + "</div>" +
     "</div>" +
     (toast ? '<div class="toast">' + toast + "</div>" : "") +
     '<div class="body">' +
@@ -1767,7 +1789,7 @@ function card(n) {
       '<div class="actions">' +
         '<a class="watch" target="_blank" rel="noopener" href="' + link + '">' + watchLabel + "</a>" +
         '<div class="stars">' + [1,2,3,4,5].map(k =>
-          '<button title="' + k + ' — ' + SCALE[k] + ' (rates the abstract)" class="' + (n.nugAbstractRating >= k ? "lit" : "") + '" onclick="rate(\'' + n.id + '\',' + k + ')">&#9733;</button>'
+          '<button title="' + k + ' — ' + SCALE[k] + ' (rates the abstract)" class="' + (n.nugAbstractRating >= k ? "lit" : "") + '" onclick="rate(\'' + n.id + '\',' + k + ')">' + STAR + '</button>'
         ).join("") + "</div>" +
       "</div>" +
       '<div class="rnote">' + rnote(n) + "</div>" +

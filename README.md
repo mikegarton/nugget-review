@@ -72,7 +72,10 @@ before the code, plus the controls-by-state-variables matrix.
    expanded-card stars rate the abstract (`yt_nuggets.nug_ai_abstract_rating`,
    the only level that pickles, filters or sorts). Scale: 1 never gonna
    look · 2 unlikely to use · 3 didn't regret · 4 good · 5 outstanding.
-   Tap the same star again to clear.
+   Tap the same star again to clear. Every star row is the last item of
+   a right-justified strip, nearest the right thumb; an unselected star is
+   a dim beige outline, a selected star solid gold (Mike, 2026-09-18;
+   viewer-spec §16).
 2. **1–2★ = pickled**: the card shows "pickled — hidden from the default
    view (kept; find it under Rating → Pickled)", then leaves the default
    view. Nothing is ever deleted (the old 1★ purge is retired); pickled
