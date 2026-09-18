@@ -473,6 +473,7 @@ function renderTags() {
 // Plain-language names for the knobs (the raw key stays visible underneath —
 // it's what SQL edits need). Fallback: underscores become spaces.
 const KNOB_NAMES = {
+  campaign_search_interval_days: "Days between campaign searches",
   batch_size: "Items per processor run",
   batch_pacing_s: "Pause between items (s)",
   transcript_retries: "Transcript retry attempts",
@@ -518,6 +519,8 @@ const KNOB_GROUPS = [
            "credit_pause_minutes", "claude_paused_until", "live_stream_defer_h"] },
   { title: "Extraction", scope: "yt-processor",
     keys: ["extract_max_tokens", "substack_links_per_post", "extract_max_tokens_retry", "purge_grace_hours"] },
+  { title: "Campaign discovery", scope: "yt-prospector",
+    keys: ["campaign_search_interval_days"] },
   { title: "Budgets and governors", scope: "yt-processor · yt-tts · ops page",
     keys: ["claude_budget_usd_month", "burn_multiplier", "tts_max_usd_month"] },
   { title: "Polling and playlists", scope: "yt-poller · yt-playlist-sync",
@@ -597,7 +600,8 @@ const CODE_CONSTANTS = [
      "A row still in status rendering this long after its attempt stamp was killed by the wall clock and is put back to pending (terminal if it was the last attempt). Any value above the wall clock works the same"],
   ]},
   { group: "yt-prospector", rows: [
-    ["SEARCH_RESULTS_PER_QUERY", "25", "yt-prospector", "YouTube search results fetched per campaign query per day (100 quota units per query)"],
+    ["SEARCH_RESULTS_PER_QUERY", "25", "yt-prospector", "YouTube search results fetched per campaign query per search run, every campaign_search_interval_days (100 quota units per query)"],
+    ["INTERVAL_SLACK_HOURS", "12", "yt-prospector", "A search run counts as due this many hours before campaign_search_interval_days is up, so a run that logged its last search a few minutes into the day does not slip the next one by a day. Half the daily cron spacing"],
     ["MIN_DURATION_S", "180", "yt-prospector", "Candidates shorter than this are screened out before any transcript is spent"],
     ["MAX_DURATION_S", "10800", "yt-prospector", "Candidates longer than 3 h are screened out"],
   ]},
