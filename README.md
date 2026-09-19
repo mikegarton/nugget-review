@@ -124,8 +124,9 @@ zone; frequency orders the rest; utilities last.
   array) · Domain · Age (≤ 2 days … ≤ 1 year, by publish date).
 - **Pinned, far right, never scrolls — Queued**: `Q shown` / `Q hidden`
   removes queued nuggets from the list ("already decided").
-- **Row 2 — order**: Group (None · Video) · Sort · ▲▼. Group=Video sets
-  Sort=My_rating as a declared side-effect (yellow until you touch Sort).
+- **Row 2 — order**: Group (None · Video) · Sort · ▲▼. Group never
+  changes Sort (2026-09-19). A tap on a card (stars, A/V/R, K) never
+  moves it; the declared order returns on the next filter/sort change.
   Sort keys, every one both directions (ascending is the weeding view):
   **Appeal** (personal_score — a prediction of how much you will like it)
   · **Coach** (expert_score — the mentor's value-per-minute) · **Broccoli**

@@ -302,6 +302,9 @@ if (state.scope === "subs") state.scope = "yt_subscribed";
 if (state.hideQ === true && !state.listed) state.listed = "hidden";
 delete state.hideQ;
 if (!LISTED.some(l => l[0] === state.listed)) state.listed = "all";
+// A Sort written by the removed Group=Video side effect (Mike 2026-09-19,
+// d18 stale-side-effect-sort a): back to the default Sort, mark dropped.
+if (state.sortOrigin === "side_effect") { state.sort = DEFAULTS.sort; state.sortOrigin = DEFAULTS.sortOrigin; localStorage.setItem("ytr3", JSON.stringify(state)); }
 { const pl = new URLSearchParams(location.search).get("listed"); if (pl && LISTED.some(l => l[0] === pl)) state.listed = pl; }
 let openId = null;
 // Group-header fold state (Mike, 2026-08-26): a MODE plus per-header
@@ -312,11 +315,13 @@ let openId = null;
 let collapseMode = false;
 let gToggled = new Set();
 function isGroupCollapsed(vid) { return collapseMode ? !gToggled.has(vid) : gToggled.has(vid); }
-// Cards mutated while on screen keep their spot even once they stop passing
-// the filters (a 1-2 star tap shows its pickled acknowledgment instead of
-// vanishing mid-tap). Cleared on any filter/sort/group change.
-let pinned = new Set();
-let toasts = new Map(); // nugget id -> acknowledgment text, cleared with pinned
+// Stored order (Mike 2026-09-19, d17 order-hold-design a): the filtered,
+// sorted id list is worked out only on a load or a filter/Sort/Dir/Group
+// change (touched); every other repaint paints this list with each card's
+// current values, so a tap never moves or hides a card (a 1-2 star tap shows
+// its pickled acknowledgment in place). Replaces the per-card pinned set.
+let order = null; // [id, ...] or null = work it out on the next render
+let toasts = new Map(); // nugget id -> acknowledgment text, cleared with the stored order
 // Windowed paint (2026-08-23): the list is filtered and sorted in FULL (the
 // counts are exact) but only the first WINDOW cards are built into the DOM;
 // the next WINDOW append as the sentinel scrolls near (painting ~19k cards
@@ -537,9 +542,12 @@ function tieBreak(a, b) {
 }
 
 function visible() {
-  const v = all.filter(n => (contentPass(n) && judgmentPass(n)) || pinned.has(n.id));
-  v.sort(comparator());
-  return v;
+  if (!order) {
+    const v = all.filter(n => contentPass(n) && judgmentPass(n));
+    v.sort(comparator());
+    order = v.map(n => n.id);
+  }
+  return order.map(id => byId.get(id)).filter(Boolean);
 }
 
 // ---- controls --------------------------------------------------------------
@@ -693,11 +701,9 @@ function renderControls() {
     if (el) el.disabled = !loadedSel;
   }
   document.getElementById("cFocus").onclick = () => { state.focus = true; save(); render(); };
-  bind("cGroup", "group", () => {
-    // Group=Video's default sort is My_rating (CONFIRMED 2026-08-20) — a
-    // declared side-effect, yellow until the user touches Sort (P-015).
-    if (state.group === "video") { state.sort = "my_rating"; state.sortOrigin = "side_effect"; }
-  });
+  // Group never writes Sort (Mike 2026-09-19, d14 group-sort-side-effect a;
+  // replaces the 2026-08-20 Group=Video -> My_rating side effect).
+  bind("cGroup", "group");
   bind("cSort", "sort", () => { state.sortOrigin = "user"; });
   bind("cRate", "ratef");
   document.getElementById("cDir").onclick = () => {
@@ -832,7 +838,7 @@ function posUpdate() {
 }
 // Any filter/sort/group change: persist, drop pins and acknowledgments
 // (views stay honest), re-render.
-function touched() { pinned.clear(); toasts.clear(); paintLimit = WINDOW; save(); render(); }
+function touched() { order = null; toasts.clear(); paintLimit = WINDOW; save(); render(); }
 
 function render() {
   renderControls();
@@ -1600,7 +1606,7 @@ async function setListAll(vid, key) {
   const allOn = g.every(x => x.queueList === key);
   const targets = allOn ? g : g.filter(x => !x.queueList);
   const ts = new Date().toISOString();
-  for (const n of targets) { n.queueList = allOn ? null : key; n.queuedAt = allOn ? null : ts; pinned.add(n.id); }
+  for (const n of targets) { n.queueList = allOn ? null : key; n.queuedAt = allOn ? null : ts; }
   render();
   for (const n of targets) await post("/queued", { id: n.id, list: allOn ? null : key });
 }
@@ -1829,7 +1835,7 @@ async function post(path, body) {
 async function rate(id, k) {
   const n = all.find(x => x.id === id);
   const next = n.nugAbstractRating === k ? null : k; // tap the same star again to clear
-  n.nugAbstractRating = next; pinned.add(id);
+  n.nugAbstractRating = next;
   if (next != null && next <= 2) toasts.set(id, PICKLE_ACK); else toasts.delete(id);
   render();
   await post("/rate", { level: "nug_abstract", id, rating: next });
@@ -1846,21 +1852,20 @@ async function rateHl(id, k) {
 async function setKeeper(id) {
   const n = all.find(x => x.id === id);
   n.keeperAt = n.keeperAt ? null : new Date().toISOString();
-  pinned.add(id); render();
+  render();
   await post("/keeper", { id, keeper: !!n.keeperAt });
 }
 // Tap the "played" chip to mark unplayed (Mike, 2026-08-23).
 async function togglePlayed(id) {
   const n = all.find(x => x.id === id);
   n.playedAt = null;
-  pinned.add(id); render();
+  render();
   await post("/played", { id, played: false });
 }
 // Played (§13.4): stamped by the renderer that finished the item.
 async function markPlayed(n) {
   if (!n || n.playedAt) return;
   n.playedAt = new Date().toISOString();
-  pinned.add(n.id);
   await post("/played", { id: n.id, played: true });
 }
 // One list per nugget: tapping the list it is on clears it; another moves it.
@@ -1868,7 +1873,7 @@ async function setList(id, key) {
   const n = all.find(x => x.id === id);
   const next = n.queueList === key ? null : key;
   n.queueList = next; n.queuedAt = next ? new Date().toISOString() : null;
-  pinned.add(id); render();
+  render();
   await post("/queued", { id, list: next });
 }
 
@@ -2035,7 +2040,7 @@ async function loadData() {
   catList = Object.keys(catTtls).filter(c => seen.has(c))
     .concat([...seen].filter(c => !(c in catTtls)).sort());
   loadedSel = sel;
-  pinned.clear(); toasts.clear(); paintLimit = WINDOW; openId = null; gToggled = new Set();
+  order = null; toasts.clear(); paintLimit = WINDOW; openId = null; gToggled = new Set();
   render();
 }
 load();
