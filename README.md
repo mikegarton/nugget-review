@@ -14,8 +14,12 @@ as its own app). Root `index.html` / `ops.html` / `capture.html` /
 bookmarks and an old N-add's share action keep working.
 
 - `view/index.html` — the viewer (filter, sort, rate abstracts, queue
-  clips; shows manual adds that produced zero nuggets — you asked, so the
-  answer is shown). Installable as **N-view** (`view/manifest.webmanifest`).
+  clips; under Scope = My adds it shows the manual adds that produced zero
+  nuggets — you asked, so the answer is shown — at the low end of the list,
+  each row with a "retire" button that stamps
+  `yt_videos.manual_empty_retired_at`; the count line names every
+  non-default content filter, viewer-spec §17). Installable as **N-view**
+  (`view/manifest.webmanifest`).
 - `view/clips.html` — the clip player (2026-08-22): plays the queued
   nuggets as clips back-to-back in an embedded YouTube player — one tap,
   phone in the pocket, audio on earbuds. Same key as the viewer.

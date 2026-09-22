@@ -756,9 +756,38 @@ function judgmentText() {
   if (state.listed !== "all") out.push((LISTED.find(l => l[0] === state.listed) || [])[1] || state.listed);
   return out.join(" · ");
 }
+// A Source value's label without its count or hype suffix, for a given scope.
+function sourceLabel(scope, s) {
+  if (!s || !facets) return s || "";
+  if (s.startsWith("ch:")) {
+    const ch = ((facets.channels || {})[scope || "all"] || []).find(c => "ch:" + c.id === s);
+    return ch ? ch.label : s;
+  }
+  const camp = (facets.campaigns || []).find(c => s === "c:" + c.id || s.startsWith("q:" + c.id + "|"));
+  if (camp) return s.startsWith("c:") ? "all of " + camp.name : "“" + s.slice(s.indexOf("|") + 1) + "”";
+  return s;
+}
+// §17.3.3 (Mike 2026-09-22, off-screen-filter-signal b): content filters not
+// at their default, in row-1 order, as "<widget label> <option name>" without
+// the option's count. Scope and Source come from the LOADED selection (what is
+// on screen); Category, Domain, Age from the live state. The count line names
+// all five; the focus strip's position text passes withScope=false because
+// its where-subset already prints the Scope or Source name (selectionText).
+function contentFilterText(withScope) {
+  const out = [];
+  if (withScope && loadedSel) {
+    if (loadedSel.scope) out.push("Scope " + ((SCOPES.find(s => s[0] === loadedSel.scope) || [])[1] || loadedSel.scope));
+    if (loadedSel.src) out.push("Source " + sourceLabel(loadedSel.scope, loadedSel.src));
+  }
+  if (state.cat) out.push("Category " + state.cat);
+  if (state.domain) out.push("Domain " + state.domain);
+  if (state.age) out.push("Age " + ((AGES.find(a => a[0] === state.age) || [])[1] || state.age));
+  return out.join(" · ");
+}
 function posText() {
   const vid = state.group === "video" && posVideo ? "video " + posVideo + " of " + posTotals.videos + " · " : "";
-  return vid + (posNugget || "–") + " of " + posTotals.listed + " listed / " + posTotals.avail + " available";
+  const cft = contentFilterText(false);
+  return vid + (posNugget || "–") + " of " + posTotals.listed + " listed / " + posTotals.avail + " available" + (cft ? " · " + cft : "");
 }
 
 function renderStrip() {
@@ -869,17 +898,27 @@ function render() {
   if (state.group === "video") for (const n of v) if (!posGroup.has(n.video_id)) posGroup.set(n.video_id, posGroup.size + 1);
   posTotals = { listed: v.length, avail, videos: posGroup.size };
   if (focus) posUpdate();
+  // §17.3.3 (off-screen-filter-signal b): every content filter not at its
+  // default is named right after the two counts, so a widget that has
+  // scrolled off its strip still announces itself.
+  const cft = contentFilterText(true);
   document.getElementById("count").textContent =
     (applyPending() ? "selection changed — tap Apply to load · showing " + (SCOPES.find(s => s[0] === loadedSel.scope) || ["", "All"])[1] + " · " : "") +
     v.length + " listed / " + avail + " available" +
+    (cft ? " · " + cft : "") +
     (state.sort === "broccoli" ? " — Broccoli: the coach's score above what your appeal predicts" : "") +
     " · edge stripe = " + (stripeDim() === "appeal" ? "appeal" : "coach") + " score (green 75+, gold 85+)";
   const list = document.getElementById("list");
+  // §17.3.1 (empty-adds-placement a): the zero-nugget block is a known
+  // minimum, so it sits at the list's LOW end under every Sort key: first
+  // in an ascending list; in a descending list after the last card, and
+  // only once the windowed paint has covered the whole listed set.
   const me = manualEmptyHtml();
+  const meFirst = state.dir === "asc" ? me : "", meLast = state.dir === "asc" ? "" : me;
   if (!v.length) {
-    list.innerHTML = me + '<div class="empty">' + (applyPending()
+    list.innerHTML = meFirst + '<div class="empty">' + (applyPending()
       ? "Selection not loaded yet — tap the red Apply at the left of row 3."
-      : "Nothing here.") + "</div>";
+      : "Nothing here.") + "</div>" + meLast;
     return;
   }
   // Blocks = {html, n}: a card (n=1) or a whole video group (n = its size);
@@ -890,7 +929,7 @@ function render() {
   for (; i < blocks.length && covered < paintLimit; i++) { out.push(blocks[i].html); covered += blocks[i].n; painted.push(...blocks[i].ids); }
   const rest = v.length - covered;
   if (rest > 0) out.push('<div id="more" class="empty">' + rest + " more below — keep scrolling</div>");
-  list.innerHTML = me + out.join("");
+  list.innerHTML = meFirst + out.join("") + (rest > 0 ? "" : meLast);
   const s = document.getElementById("more");
   if (s) {
     if (io) io.observe(s);
@@ -1459,23 +1498,47 @@ function retryBody(id) { ensureBodies([id], true).then(() => render()); }
 
 // Manual adds analyzed with ZERO nuggets — shown because you asked (the
 // only honest feedback signal on the extractor). Manual sources only.
+// §17 (Mike, 2026-09-22): the block belongs to the LOADED My adds set
+// (empty-adds-visibility b; the list on screen is the loaded set, so the
+// guard reads loadedSel, not the pending selection); render() places it
+// at the list's low end (empty-adds-placement a); each row carries a
+// retire button (empty-adds-retire-button a) with an in-session undo.
+let retiredEmpty = new Set(); // video_ids retired this session; cleared by the next load
 function manualEmptyHtml() {
-  if (!manualEmpty.length || state.scope === "campaign") return "";
+  if (!manualEmpty.length || !loadedSel || loadedSel.scope !== "manual") return "";
   const rows = manualEmpty.map(v => {
     const label = v.yt_channels?.label || "?";
     const link = v.url || "https://www.youtube.com/watch?v=" + v.video_id;
+    const title = esc(v.plain_title || v.title || v.video_id);
+    if (retiredEmpty.has(v.video_id)) {
+      return '<div style="margin-top:4px">' + title +
+        ' <span style="color:var(--faint)">· retired</span> ' +
+        '<button class="util" data-vid="' + esc(v.video_id) + '" title="put this row back in the block"' +
+        ' onclick="retireEmpty(this.dataset.vid, false)">undo</button></div>';
+    }
     const verdict = v.status === "processed" ? "analyzed — no nuggets found"
       : v.status === "no_transcript" ? "no transcript available"
       : "failed: " + esc((v.error_detail || v.status).slice(0, 80));
     return '<div style="margin-top:4px">' +
-      '<a href="' + esc(link) + '" target="_blank" rel="noopener" style="color:var(--ink)">' +
-      esc(v.plain_title || v.title || v.video_id) + "</a>" +
-      ' <span style="color:var(--faint)">· ' + esc(label) + " · " + verdict + "</span></div>";
+      '<a href="' + esc(link) + '" target="_blank" rel="noopener" style="color:var(--ink)">' + title + "</a>" +
+      ' <span style="color:var(--faint)">· ' + esc(label) + " · " + verdict + "</span> " +
+      '<button class="util" data-vid="' + esc(v.video_id) + '" title="retire this row from the block; the video and its history stay"' +
+      ' onclick="retireEmpty(this.dataset.vid, true)">retire</button></div>';
   });
+  const showing = manualEmpty.filter(v => !retiredEmpty.has(v.video_id)).length;
   return '<div class="card" style="border-left:4px solid var(--faint)">' +
     '<div style="font-size:12.5px;color:var(--dim)"><b>Your manual adds — ' +
-    manualEmpty.length + " with nothing to show</b> (you asked, so here's the answer)</div>" +
+    showing + " with nothing to show</b> (you asked, so here's the answer)</div>" +
     rows.join("") + "</div>";
+}
+// Retire (or undo) one zero-nugget row: stamps yt_videos.manual_empty_retired_at
+// through POST /retire-empty (viewer-spec §17.3.2). The row is repainted at
+// once; the next /data omits stamped rows.
+async function retireEmpty(videoId, retired) {
+  if (!manualEmpty.some(v => v.video_id === videoId)) return;
+  if (retired) retiredEmpty.add(videoId); else retiredEmpty.delete(videoId);
+  render();
+  await post("/retire-empty", { video_id: videoId, retired });
 }
 
 // Group=Video: multi-nugget videos under a header; singletons stay plain
@@ -1981,6 +2044,7 @@ async function loadData() {
   loading = false;
   renderStatus(data.status);
   manualEmpty = data.manual_empty || [];
+  retiredEmpty = new Set(); // the server's list is the truth again (§17.3.2)
   phraseStatus = data.phrase_status || {};
   catTtls = data.category_ttls || {};
   defaultTtl = data.default_ttl_days || 180;
