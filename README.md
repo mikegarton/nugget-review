@@ -23,10 +23,21 @@ bookmarks and an old N-add's share action keep working.
 - `view/clips.html` — the clip player (2026-08-22): plays the queued
   nuggets as clips back-to-back in an embedded YouTube player — one tap,
   phone in the pocket, audio on earbuds. Same key as the viewer.
-- `ops/index.html` — burn rates, campaign yields, channel + per-source
-  economics, live knobs (marked knobs and per-source priority editable with
-  the ops write key; bounds enforced server-side, changes audited).
-  Installable as **N-ops** (`ops/manifest.webmanifest`).
+- `ops/index.html` — a section page since 2026-09-22: a pinned Section
+  dropdown shows one section at a time (Limits & burn with pause/resume
+  searches per campaign, campaign yield, sources, category tags, channel
+  economics lifetime and by month, parameters, code constants). The five
+  metric tables are instances of the table-viewer module
+  (`ops/table-viewer-v1.js`, a byte-identical copy of
+  `C:\dev\table-viewer\table-viewer-v1.js` until that repo is on Pages):
+  enum filters with All first, a narrow panel with min/max bounds, Sort
+  and Dir over every column, a column chooser, row folding instead of
+  horizontal scroll, grouping, an action cell (subscribe, the unsub pair,
+  priority edit with the ops write key). Spec: working_docs
+  `projects\table-viewer\table-viewer-spec.md`. Marked knobs in the
+  parameters section stay editable with the ops write key; bounds enforced
+  server-side, changes audited. Installable as **N-ops**
+  (`ops/manifest.webmanifest`).
 - The control room (`home.html`) moved to `C:\dev\control-room\` on
   2026-08-08 — it is a cross-project personal hub, not part of this app's
   shell. The paste box for sending YouTube links (`yt-add`) lives there.
