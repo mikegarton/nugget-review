@@ -18,8 +18,11 @@
   body {
     background: var(--bg); color: var(--ink);
     font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
-    padding: 12px 10px 60px; max-width: 900px; margin: 0 auto;
+    padding: 12px 10px 60px;
   }
+  /* Page width (table-viewer spec G, ruling page-max-width b): tables use the
+     window's full width; prose stays at most 900 px wide. */
+  .sub, .note { max-width: 900px; }
   h1 { font-size: 20px; margin-bottom: 2px; }
   .sub { color: var(--dim); font-size: 13px; margin-bottom: 8px; }
   h2 { font-size: 16px; margin: 14px 0 8px; }
@@ -680,7 +683,13 @@ const CODE_CONSTANTS = [
   ]},
   { group: "table-viewer v1 (ops page tables)", rows: [
     ["ENUM_MAX_DISTINCT", "12", "table-viewer-v1.js", "A column is a filterable enum when its distinct values are at most this many AND at most half the rows (rulings d8 a, d18 b)"],
-    ["IDENTITY_OWN_LINE_MIN_CHARS", "24", "table-viewer-v1.js", "An identity cell longer than this renders on its own line above the row's metrics (ruling d17 b)"],
+    ["IDENTITY_OWN_LINE_MIN_CHARS", "24", "table-viewer-v1.js", "Where identities sit beside their cells, an identity longer than this takes its own line and its cells stay under their headers (spec E9 case 2)"],
+    ["PHONE_LAYOUT_BELOW_PX", "600", "table-viewer-v1.js", "A table narrower than this gets the identity minimum below and, when its chosen columns do not all fit, every identity on its own line (spec E9 case 1). Rule: Android's compact window width class ends at 600 dp"],
+    ["IDENTITY_MIN_PERCENT_PHONE", "30", "table-viewer-v1.js", "The identity column's least share of a table narrower than PHONE_LAYOUT_BELOW_PX (spec E8 rule 3). Rule: none on record"],
+    ["IDENTITY_MIN_PX", "80", "table-viewer-v1.js", "The identity column's least width (spec E8 rule 3). Rule: none on record"],
+    ["TEXT_NEED_MAX_CHARS", "40", "table-viewer-v1.js", "Characters of a wrap or shrink text value counted toward its column's width (spec E8 rule 2). Rule: none on record"],
+    ["CLIP_CHARS", "22", "table-viewer-v1.js", "Characters of a clip value counted toward its column's width (spec E8 rule 2). Rule: none on record"],
+    ["REDRAW_MIN_WIDTH_CHANGE_PX", "24", "table-viewer-v1.js", "A width change larger than this renders the table again, its fit and count line included (spec E8). Rule: none on record"],
     ["ARM_SECONDS", "5", "table-viewer-v1.js", "An armed action button disarms after this many seconds (ruling d31 a)"],
     ["TEXT_FLOOR_PX", "16", "table-viewer-v1.js", "The smallest text size a shrink column may reach (Text is black and big enough)"],
     ["STATE_VERSION", "1", "table-viewer-v1.js", "Saved filter, sort and column state with another version is discarded once at load (ruling d25 a)"],
