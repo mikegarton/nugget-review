@@ -27,9 +27,9 @@ bookmarks and an old N-add's share action keep working.
   dropdown shows one section at a time (Limits & burn with pause/resume
   searches per campaign, campaign yield, sources, category tags, channel
   economics lifetime and by month, parameters, code constants). The five
-  metric tables are instances of the table-viewer module
-  (`ops/table-viewer-v1.js`, a byte-identical copy of
-  `C:\dev\table-viewer\table-viewer-v1.js` until that repo is on Pages):
+  metric tables are instances of the table-viewer module, loaded from
+  its own Pages site, `https://mikegarton.github.io/table-viewer/table-viewer-v1.js`,
+  since 2026-09-24 (the copy in `ops/` was removed that day):
   enum filters with All first, a narrow panel with min/max bounds, Sort
   and Dir over every column, a column chooser, row folding instead of
   horizontal scroll, grouping, an action cell (subscribe, the unsub pair,
