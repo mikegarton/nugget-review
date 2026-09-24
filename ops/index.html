@@ -286,10 +286,7 @@ const TOTAL_COLS = [
   { key: "nuggets_per_transcript_minute", label: "nug/min", decimals: 3 },
   { key: "channel_id", visible: false },
   { key: "enabled", visible: false },
-  { key: "usd_per_nugget", visible: false, label: "$/nugget", decimals: 4 },
-  { key: "usd_per_five_star", visible: false, label: "$/5★", decimals: 4 },
   { key: "kwords", visible: false, label: "kwords", decimals: 2 },
-  { key: "worded_nuggets", visible: false, label: "worded nuggets", decimals: 0 },
   { key: "first_processed_at", visible: false, label: "first processed" },
 ];
 const MONTH_HIDE = new Set(["nug_per_month", "taste_peak", "taste_med", "taste_avg",
@@ -327,7 +324,6 @@ const SPECS = {
       { key: "five_star", label: "5★", decimals: 0 },
       { key: "cost_usd", label: "$", decimals: 2, visible: false },
       { key: "kwords", label: "kwords", decimals: 2, visible: false },
-      { key: "worded_nuggets", label: "worded nuggets", decimals: 0, visible: false },
       { key: "query_id", visible: false },
       { key: "active", visible: false },
     ] },
