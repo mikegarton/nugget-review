@@ -24,7 +24,8 @@ bookmarks and an old N-add's share action keep working.
   nuggets as clips back-to-back in an embedded YouTube player — one tap,
   phone in the pocket, audio on earbuds. Same key as the viewer.
 - `ops/index.html` — a section page since 2026-09-22: a pinned Section
-  dropdown shows one section at a time (Limits & burn with pause/resume
+  dropdown, with the A− A+ text-size pair at the bar's right end (sizes
+  the whole page, remembered per device), shows one section at a time (Limits & burn with pause/resume
   searches per campaign, campaign yield, sources, category tags, channel
   economics lifetime and by month, parameters, code constants). The five
   metric tables are instances of the table-viewer module, loaded from

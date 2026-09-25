@@ -28,14 +28,16 @@
   h2 { font-size: 16px; margin: 14px 0 8px; }
   /* Section selector (table-viewer spec E1, Mike's rulings d1, d2 a, d16 a):
      one native dropdown pinned at the top; the chosen section renders alone. */
-  .secbar { position: sticky; top: 0; background: var(--bg); padding: 8px 0; z-index: 5; display: flex; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); }
+  /* The bar wraps, so at a large text size (spec E14) the text-size pair
+     takes a second line instead of pushing the page sideways (spec G). */
+  .secbar { position: sticky; top: 0; background: var(--bg); padding: 8px 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); }
   .secbar label { font-size: 13px; color: var(--dim); }
   .secbar select { font: inherit; font-size: 16px; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; min-height: 40px; max-width: 100%; }
   section { display: none; } section.on { display: block; }
   .cards { display: flex; flex-wrap: wrap; gap: 8px; }
   .bcard {
     background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-    padding: 10px 12px; font-size: 13px; min-width: 220px;
+    padding: 10px 12px; font-size: 13px; min-width: min(220px, 100%);   /* capped at the row's width, so a large text size (spec E14) never pushes the page sideways (spec G) */
   }
   .bcard b { font-size: 15px; }
   .bcard .row { color: var(--dim); margin-top: 3px; }
@@ -74,7 +76,7 @@
 <div class="sub">Limits, channel economics, campaign yields, sources, tags, and knobs. Pick a section
 below; every table has filters, bounds, sort, a column chooser and an action cell (table-viewer v1).
 Marked knobs are editable here with the ops write key; everything else is SQL-editor only.</div>
-<div class="secbar"><label for="secSel">Section</label><select id="secSel"></select></div>
+<div class="secbar"><label for="secSel">Section</label><select id="secSel"></select><span id="textSize"></span></div>
 
 <section data-sec="limits">
 <h2>Limits &amp; burn</h2>
@@ -191,6 +193,10 @@ maintained by hand alongside it (2026-09-11).</div>
 
 <script src="https://mikegarton.github.io/table-viewer/table-viewer-v1.js"></script>
 <script>
+// E14: the text-size pair at the right end of the pinned bar. A device can
+// hold the previous module for up to 10 minutes after a push, so the call
+// waits for a module that has the function.
+if (window.TableViewer && TableViewer.mountTextSize) TableViewer.mountTextSize("#textSize");
 const BASE = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-review";
 // Key from ?key= once, then this device's localStorage (cr_review_key — shared
 // with the viewer and capture surfaces) so the installed N-ops app (RV-031)
@@ -689,6 +695,9 @@ const CODE_CONSTANTS = [
     ["ARM_SECONDS", "5", "table-viewer-v1.js", "An armed action button disarms after this many seconds (ruling d31 a)"],
     ["TEXT_FLOOR_PX", "16", "table-viewer-v1.js", "The smallest text size a shrink column may reach (Text is black and big enough)"],
     ["STATE_VERSION", "1", "table-viewer-v1.js", "Saved filter, sort and column state with another version is discarded once at load (ruling d25 a)"],
+    ["TEXT_SCALE_STEP_FACTOR", "1.2", "table-viewer-v1.js", "Each A+ tap multiplies the page's text size by this, and each A− tap divides it (spec E14). Rule: the nugget viewer's zoom step (ruling ops-text-size-control a)"],
+    ["TEXT_SCALE_MIN_FACTOR", "0.58", "table-viewer-v1.js", "The smallest page text size, as a factor of normal size (spec E14). Rule: the nugget viewer's zoom floor (ruling ops-text-size-control a)"],
+    ["TEXT_SCALE_MAX_FACTOR", "2.5", "table-viewer-v1.js", "The largest page text size, as a factor of normal size (spec E14). Rule: the nugget viewer's zoom ceiling (ruling ops-text-size-control a)"],
   ]},
 ];
 
