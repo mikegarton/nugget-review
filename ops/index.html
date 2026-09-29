@@ -101,6 +101,19 @@ exactly the phrases that stamp stopped (viewer headers show them as Stopped).</d
 <div id="killed" class="cards" style="margin-top:8px"></div>
 </section>
 
+<section data-sec="feed">
+<h2>Feed health — RSS fetch failures</h2>
+<div id="feed"></div>
+<div class="note">One row per UTC day, from the hourly poller's sweep log
+(since 2026-09-28; before that a failed feed left no record). A <b>fetch</b> is
+one channel's feed in one sweep. <b>Failed</b> = still failing after the one
+retry (10 s timeout, 2 s pause, see the parameters section); <b>retry saved</b> =
+failed once, fetched on the retry. A full UTC day holds 24 sweeps, so a day with
+fewer sweeps lost a sweep entirely (the run was killed before it could log);
+today's row is partial. Failed fetches show as yellow. The failing channels and
+their HTTP status are in <b>yt_feed_sweeps.failures</b>.</div>
+</section>
+
 <section data-sec="yield">
 <h2>Campaign yield by query</h2>
 <div id="yield"></div>
@@ -218,6 +231,7 @@ const fmt = (v, d) => v == null ? "—" : Number(v).toFixed(d);
 // ---- sections (spec E1): page order = selector order; the choice is kept per device ----
 const SECTIONS = [
   ["limits", "Limits & burn"],
+  ["feed", "Feed health — RSS fetch failures"],
   ["yield", "Campaign yield by query"],
   ["sources", "Sources — priority & economics"],
   ["tags", "Category tags — coverage & TTL"],
@@ -357,6 +371,18 @@ const SPECS = {
         input: { column: "priority", key: "value" }, guard: "none", done: "saved" },
     ],
     request: apiRequest, afterAction },
+  feed: { name: "feed-health", site: "ops", identity: "day", sort: { key: "day", dir: "desc" },
+    columns: [
+      { key: "day", label: "day (UTC)" },
+      { key: "sweeps", label: "sweeps", decimals: 0, mark: (v, r) => Number(v) < 24 && String(r.day).slice(0, 10) < new Date().toISOString().slice(0, 10) ? "warn" : null },   // today is partial by nature
+      { key: "feed_fetches", label: "fetches", decimals: 0 },
+      { key: "failed_fetches", label: "failed", decimals: 0, mark: (v) => Number(v) > 0 ? "warn" : null },
+      { key: "failed_pct", label: "failed %", decimals: 1, mark: (v) => Number(v) > 0 ? "warn" : null },
+      { key: "retry_saved", label: "retry saved", decimals: 0 },
+      { key: "sweeps_with_failure", label: "sweeps with a failure", decimals: 0 },
+      { key: "worst_sweep_failed", label: "worst sweep failed", decimals: 0 },
+      { key: "sweeps_retry_stopped", label: "sweeps retry stopped", decimals: 0 },
+    ] },
   tags: { name: "tags", site: "ops", identity: "tag", sort: { key: "coverage_pct", dir: "desc" },
     columns: [
       { key: "tag", label: "tag" },
@@ -538,6 +564,7 @@ function render() {
   mountOrUpdate("yield", (ops.campaign_yield || []).map(r => Object.assign({}, r, { status: r.active ? "searching" : "stopped" })));
   const econ = new Map((ops.source_econ || []).map(s => [s.key, s]));
   mountOrUpdate("sources", (ops.sources || []).map(s => Object.assign({}, econ.get(s.key) || {}, s, { state: s.enabled ? "on" : "off" })));
+  mountOrUpdate("feed", ops.feed_failures_daily || []);
   mountOrUpdate("tags", ops.tag_coverage || []);
   mountOrUpdate("totals", ops.channel_totals || []);
   mountOrUpdate("monthly", (ops.channel_monthly || []).map(r => Object.assign({}, r, { month: String(r.month).slice(0, 7) })));
@@ -560,6 +587,9 @@ const KNOB_NAMES = {
   purge_grace_hours: "1★ undo window (hours)",
   claude_budget_usd_month: "AI monthly budget ($)",
   poll_pacing_ms: "Pause between poller calls (ms)",
+  feed_fetch_timeout_ms: "Give up on one feed request after (ms)",
+  feed_retry_pause_ms: "Wait before a failed feed's one retry (ms)",
+  feed_retry_stop_after_ms: "Sweep age after which feed retries stop (ms)",
   burn_multiplier: "Daily cap burn multiplier",
   wall_clock_budget_ms: "Processor time budget (ms)",
   transcript_timeout_ms: "Transcript timeout (ms)",
@@ -598,7 +628,7 @@ const KNOB_GROUPS = [
   { title: "Budgets and governors", scope: "yt-processor · yt-tts · ops page",
     keys: ["claude_budget_usd_month", "burn_multiplier", "tts_max_usd_month"] },
   { title: "Polling and playlists", scope: "yt-poller · yt-playlist-sync",
-    keys: ["poll_pacing_ms", "manual_playlist_id", "queue_playlist_id", "nugget_audio_playlist_id", "queue_sync_cap"] },
+    keys: ["poll_pacing_ms", "feed_fetch_timeout_ms", "feed_retry_pause_ms", "feed_retry_stop_after_ms", "manual_playlist_id", "queue_playlist_id", "nugget_audio_playlist_id", "queue_sync_cap"] },
   { title: "Mail ingest", scope: "yt-mail-ingest",
     keys: ["mail_ingest_channel", "mail_ingest_query"] },
   { title: "Text-to-speech", scope: "yt-tts · viewer",
