@@ -422,7 +422,7 @@ function limitRow(l, i) {
   const r = l.noProjection ? (l.quota > 0 ? l.used / l.quota : null) : paceOf(l.used, l.quota, l.elapsed);
   const pct = Math.min(100, 100 * l.used / Math.max(l.quota, 1e-9));
   const proj = r == null ? '<span class="dim">no quota</span>' :
-    l.noProjection ? '<span class="' + paceClass(r) + '">' + Math.round(r * 100) + "% used now — no projection</span>" :
+    l.noProjection ? '<span class="' + paceClass(r) + '">' + Math.round(r * 100) + "% used now — " + (l.projText || "no projection") + "</span>" :
     '<span class="' + paceClass(r) + '">' + Math.round(r * 100) + "% — " + paceLabel(r) + "</span>";
   return "<tr><td>" + esc(l.name) +
     (l.sub ? '<br><span class="dim">' + esc(l.sub) + "</span>" : "") + "</td>" +
@@ -507,10 +507,15 @@ function render() {
     rows.push({
       name: "Database size — Supabase Free", type: "ceiling",
       sub: "pg_database_size vs the plan cap (✎ supabase_db_quota_mb in parameters) — shared by yt-nugget, Open Brain and kardia · " +
-        "largest tables: " + top + " · no history is kept, so no projection",
+        "largest tables: " + top + " · runway = a straight-line trend over the last db_size_trend_days daily snapshots (yt_db_size_daily), so a one-off burst reads as growth until it leaves the window",
       used: Number(sz.db_mb) || 0, usedText: fmt(sz.db_mb, 0) + " MB",
       quota: Number(sz.quota_mb), quotaText: fmt(sz.quota_mb, 0) + " MB",
       noProjection: true, elapsed: 0, resets: "never (grows until pruned)",
+      projText: sz.days_to_full != null
+        ? "+" + fmt(sz.growth_mb_per_day, 1) + " MB/day, full in about " + fmt(sz.days_to_full, 0) + " days (" + sz.snapshots_used + "-day trend)"
+        : (sz.snapshots_used || 0) < 3
+          ? "runway needs 3 daily snapshots, has " + (sz.snapshots_used || 0)
+          : "not growing over the " + sz.snapshots_used + "-day trend",
     });
   }
   // Phrase counts per campaign from the yield rows the page already receives:
