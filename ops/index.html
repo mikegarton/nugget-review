@@ -91,7 +91,8 @@ a straight-line projection of where the period ends.
 <span class="p-red">red</span> ≥100%.
 Types: <b>expires</b> = prepaid allotment, unused value is lost at reset;
 <b>ceiling</b> = do-not-exceed cap; <b>metered</b> = pay-per-use judged against a
-chosen budget — nothing blocks at it. The tick on each bar marks where
+chosen budget — nothing blocks at it. The database-size row has no growth
+history to project from, so it shows the share used now in the same five colors and has no tick. The tick on each bar marks where
 "exactly on pace" would be right now. A campaign row's <b>pause searches</b>
 stops every searching phrase of that campaign with one shared stamp; its
 already-promoted videos keep processing; <b>resume searches</b> restarts
@@ -316,8 +317,8 @@ const SPECS = {
   yield: { name: "campaign-yield", site: "ops", identity: "query", sort: { key: "nug_per_item", dir: "desc" },
     columns: [
       { key: "query", label: "query" },
-      { key: "campaign", label: "campaign" },
-      { key: "status", label: "status", render: (v) => v === "stopped" ? '<span class="hot">stopped</span>' : esc(v) },
+      { key: "campaign", label: "campaign", visible: false },
+      { key: "status", label: "status", visible: false, render: (v) => v === "stopped" ? '<span class="hot">stopped</span>' : esc(v) },
       { key: "nug_per_item", label: "nug/item", decimals: 2 },
       { key: "nug_per_usd", label: "nug/$", decimals: 0 },
       { key: "nug_per_kword", label: "nug/kw", decimals: 2 },
@@ -389,9 +390,13 @@ function paceLabel(r) {
 }
 
 function limitRow(l, i) {
-  const r = paceOf(l.used, l.quota, l.elapsed);
+  // A row with no defensible growth basis (l.noProjection) is colored by the
+  // share of quota used now, with the same five bands; it has no tick and no
+  // projected value.
+  const r = l.noProjection ? (l.quota > 0 ? l.used / l.quota : null) : paceOf(l.used, l.quota, l.elapsed);
   const pct = Math.min(100, 100 * l.used / Math.max(l.quota, 1e-9));
   const proj = r == null ? '<span class="dim">no quota</span>' :
+    l.noProjection ? '<span class="' + paceClass(r) + '">' + Math.round(r * 100) + "% used now — no projection</span>" :
     '<span class="' + paceClass(r) + '">' + Math.round(r * 100) + "% — " + paceLabel(r) + "</span>";
   return "<tr><td>" + esc(l.name) +
     (l.sub ? '<br><span class="dim">' + esc(l.sub) + "</span>" : "") + "</td>" +
@@ -400,7 +405,7 @@ function limitRow(l, i) {
     "<td>" + proj + "</td>" +
     '<td><div class="bar ' + paceClass(r) + '" style="display:inline-block;vertical-align:middle">' +
       '<i style="width:' + pct + '%"></i>' +
-      '<span class="tick" style="left:' + Math.min(100, 100 * l.elapsed) + '%"></span></div></td>' +
+      (l.noProjection ? "" : '<span class="tick" style="left:' + Math.min(100, 100 * l.elapsed) + '%"></span>') + "</div></td>" +
     '<td style="color:var(--dim)">' + esc(l.resets) + "</td>" +
     '<td class="acts" data-i="' + i + '"></td></tr>';
 }
@@ -469,6 +474,18 @@ function render() {
         elapsed: monthFrac, resets: "month end",
       });
     }
+  }
+  const sz = ops.db_size;
+  if (sz && sz.quota_mb > 0) {
+    const top = (sz.top_tables || []).map(t => t.table.replace(/^public\./, "") + " " + fmt(t.mb, 0) + " MB").join(" · ");
+    rows.push({
+      name: "Database size — Supabase Free", type: "ceiling",
+      sub: "pg_database_size vs the plan cap (✎ supabase_db_quota_mb in parameters) — shared by yt-nugget, Open Brain and kardia · " +
+        "largest tables: " + top + " · no history is kept, so no projection",
+      used: Number(sz.db_mb) || 0, usedText: fmt(sz.db_mb, 0) + " MB",
+      quota: Number(sz.quota_mb), quotaText: fmt(sz.quota_mb, 0) + " MB",
+      noProjection: true, elapsed: 0, resets: "never (grows until pruned)",
+    });
   }
   // Phrase counts per campaign from the yield rows the page already receives:
   // the pause and resume buttons read them (spec J2, rulings d29 and d36 a).
@@ -668,6 +685,9 @@ const CODE_CONSTANTS = [
     ["DRIFT_SPEARMAN_MIN", "0.20", "taste-refresh", "Breach when rank correlation over the trailing 50 falls below this"],
     ["SAMPLE_LIMIT", "200", "taste-refresh", "Open Brain thoughts sampled when distilling the taste profile"],
   ]},
+  { group: "yt_supabase_size (view)", rows: [
+    ["TOP_TABLES_N", "6", "yt_supabase_size view, ops Limits row \"Database size\"", "Largest tables listed in the row's note. Rule: reaches down to the sixth-largest table (15 MB at the 2026-09-28 measurement), which shows the whole set worth pruning without crowding the row"],
+  ]},
   { group: "yt-review", rows: [
     ["default_ttl_days", "180", "yt-review /data", "Soft-expiry TTL for an unknown or legacy tag; known tags use yt_categories.ttl_days"],
   ]},
@@ -685,7 +705,7 @@ const CODE_CONSTANTS = [
   ]},
   { group: "table-viewer v1 (ops page tables)", rows: [
     ["ENUM_MAX_DISTINCT", "12", "table-viewer-v1.js", "A column is a filterable enum when its distinct values are at most this many AND at most half the rows (rulings d8 a, d18 b)"],
-    ["IDENTITY_OWN_LINE_MIN_CHARS", "24", "table-viewer-v1.js", "Where identities sit beside their cells, an identity longer than this takes its own line and its cells stay under their headers (spec E9 case 2)"],
+    ["IDENTITY_OWN_LINE_ABOVE_PERCENT", "50", "table-viewer-v1.js", "Where identities sit beside their cells, an identity whose drawn width passes this share of the table's width takes its own line and its cells stay under their headers (spec E9 case 2). Rule: 24 typical characters draw 178 px at 16 px (measured 2026-09-28), half of a 355 px phone table. Replaces IDENTITY_OWN_LINE_MIN_CHARS (24)"],
     ["PHONE_LAYOUT_BELOW_PX", "600", "table-viewer-v1.js", "A table narrower than this gets the identity minimum below and, when its chosen columns do not all fit, every identity on its own line (spec E9 case 1). Rule: Android's compact window width class ends at 600 dp"],
     ["IDENTITY_MIN_PERCENT_PHONE", "30", "table-viewer-v1.js", "The identity column's least share of a table narrower than PHONE_LAYOUT_BELOW_PX (spec E8 rule 3). Rule: the share of a 355 px phone table that leaves room for four median number cells (52 px each at 16 px) beside the identity"],
     ["IDENTITY_MIN_PX", "80", "table-viewer-v1.js", "The identity column's least width (spec E8 rule 3). Rule: the drawn width of a ten-character word at 16 px (83 px), so a channel label's longest word fits unbroken"],
