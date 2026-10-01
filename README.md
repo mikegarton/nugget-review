@@ -35,7 +35,8 @@ bookmarks and an old N-add's share action keep working.
   searches per campaign, campaign yield, sources, category tags, channel
   economics lifetime and by month, sift time (sittings, and time by source
   and campaign phrase, worked out from the tap log; since 2026-09-30),
-  parameters, code constants). The metric tables are instances of the
+  parameters, code constants). Under the Limits table one line says when
+  the last campaign sheet sync arrived (since 2026-10-01). The metric tables are instances of the
   table-viewer module, loaded from
   its own Pages site, `https://mikegarton.github.io/table-viewer/table-viewer-v1.js`,
   since 2026-09-24 (the copy in `ops/` was removed that day):

@@ -99,6 +99,7 @@ already-promoted videos keep processing; <b>resume searches</b> restarts
 exactly the phrases that stamp stopped (viewer headers show them as Stopped).</div>
 <div class="twrap"><table id="limits"><tr><td class="empty">Loading…</td></tr></table></div>
 <div id="killed" class="cards" style="margin-top:8px"></div>
+<div id="sheetSync" class="note" style="margin-top:8px"></div>
 </section>
 
 <section data-sec="feed">
@@ -629,6 +630,17 @@ function render() {
       "exceeding the ~150 s edge budget.</div></div>"
     : "";
 
+  // Campaign sheet sync (2026-10-01): when the last sync from the campaign
+  // sheet arrived, so a sheet that has gone quiet is visible. The pipeline
+  // never reads the sheet; it runs on the rows of this sync until the next.
+  const ls = ops.sheet_last_sync;
+  document.getElementById("sheetSync").innerHTML = "<b>Campaign sheet.</b> " + (ls
+    ? "Last sync arrived " + esc(String(ls.synced_at).slice(0, 16).replace("T", " ")) + " UTC: " +
+      ls.rows_accepted + " rows accepted, " + ls.rows_refused + " refused, " + ls.rows_restored +
+      " restored (" + ls.campaigns_received + " campaign rows and " + ls.phrases_received + " phrase rows received)."
+    : "No sync has arrived yet.") +
+    " Campaigns and phrases are read from the database; the sheet only updates them.";
+
   // The five template instances (ruling d3 a). Row transforms: month as
   // YYYY-MM so it filters as an enum; a query's active flag as a status word;
   // a source's enabled flag as a state word; sources merged with their economics.
@@ -814,6 +826,14 @@ const CODE_CONSTANTS = [
     ["DEVICE_CLOCK_EARLIEST_MS", "2026-09-30", "yt-review", "A device clock reading earlier than the tap log's first day is dropped the same way"],
     ["DEVICE_ID_STORE", "ytr3_device_id", "viewer (view/index.html)", "The device storage key holding the random id that separates one device's events from another's"],
     ["UNSENT_EVENTS_STORE", "ytr3_unsent_events", "viewer (view/index.html)", "The device storage key holding events that wait to be sent"],
+  ]},
+  { group: "Campaign sheet sync (yt-review /sheet-sync and the sheet's script)", rows: [
+    ["SHEET_SYNC_ROWS_MAX", "1000", "yt-review /sheet-sync", "The most rows, campaigns and phrases together, one sync may carry. Rule: about 18 times the 54 phrases held on 2026-09-30"],
+    ["SHEET_PHRASE_CHARS_MAX", "200", "yt-review /sheet-sync", "The longest phrase text accepted. No measured rule; the longest phrase held on 2026-10-01 is 56 characters"],
+    ["SHEET_ACTIVE_PHRASES_WARN", "100", "yt-review /sheet-sync", "Phrases that are on, above which a sync's answer carries a warning. Rule: one YouTube search costs 100 of the 10,000 quota units a day"],
+    ["SHEET_TIERS", "2, 3", "yt-review /sheet-sync", "Tier values a campaign row may hold: the two the last database constraint allowed. No pipeline code reads the tier today"],
+    ["SHEET_DAILY_VIDEO_CAP_MAX", "1000", "yt-review /sheet-sync", "Upper bound of a campaign row's daily video cap. No pipeline code reads that cap today; the bound only refuses a typing slip"],
+    ["SYNC_TIMER_HOUR", "5", "the sheet's script (apps-script/campaign_sheet_sync.gs)", "Hour of the daily sync in the script's time zone. Rule: early morning, before the sheet is opened for the day"],
   ]},
   { group: "yt-view-sampler (velocity study)", rows: [
     ["STUDY_START", "2026-08-20", "yt-view-sampler", "Candidates found on or after this date form the cohort"],
