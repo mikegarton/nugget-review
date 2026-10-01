@@ -82,6 +82,15 @@
   .ctl button.apply { border-color: #e0704e; color: #e0704e; font-weight: 600; }
   .ctl button.util { border-radius: 8px; padding: 5px 10px; font-size: 13px; }
   .chips .gap { flex: none; border-left: 1px solid var(--line); height: 26px; margin: 0 2px; }
+  /* Chip-row alignment (Mike, 2026-10-01, chip-row-alignment a): a button
+     chip and a dropdown chip draw different heights from the same padding,
+     so every chip in rows 1 to 3 takes its row's tallest control height; a
+     pinned slot carries its row's offsets; an empty slot takes no room. */
+  #rows .bar, #row1, #row2, #row3 { align-items: stretch; }
+  #rows .ctl > select, #rows .ctl > button { flex: 1 1 auto; }
+  .chips .gap { align-self: flex-end; }
+  #rows .bar > span { display: flex; margin-top: 4px; padding-bottom: 1px; }
+  #rows .bar > span:empty, #strip > span:empty { display: none; }
   #count { font-size: 12px; color: var(--faint); margin-top: 5px; }
   #status { font-size: 12px; margin-top: 4px; display: none; }
   #status.quiet { display: block; color: var(--good); }
@@ -199,8 +208,9 @@
     <div id="stripSub"></div>
   </div>
   <div id="rows">
-    <!-- Row 1 carries the PINNED Focus chip at its left (spec §14.3.1). -->
-    <div class="bar"><span id="focusSlot" style="flex:none"></span><div class="chips" id="row1"></div></div>
+    <!-- Row 1 starts with the Focus chip, which scrolls with the row (spec
+         §14.3.1; not pinned since Mike, 2026-10-01, focus-chip-pin b). -->
+    <div class="chips" id="row1"></div>
     <div class="chips" id="row2"></div>
     <!-- Apply is PINNED at row 3's left when a load is pending (Mike,
          2026-08-23): the rest of the row scrolls UNDER it. -->
@@ -647,11 +657,11 @@ function renderControls() {
   document.getElementById("applySlot").innerHTML = !pending ? "" : '<span class="ctl"><label for="apply">Load</label>' +
     '<button id="apply" class="apply" title="load this scope and source">' +
     (loading ? "loading…" : "Apply" + (applyN != null ? " — " + Number(applyN).toLocaleString() + (applyN === 1 ? " nugget" : " nuggets") : "")) + "</button></span>";
-  // Focus chip (spec §14.3.1): pinned at row 1's left; label = the ACTION
-  // ("focus" collapses the block to the strip); inert until a subset loads.
-  document.getElementById("focusSlot").innerHTML =
-    '<span class="ctl"><label for="cFocus">View</label><button id="cFocus" title="collapse the controls to a one-row strip">focus</button></span>';
+  // Focus chip (spec §14.3.1): row 1's first chip, scrolling with the row
+  // (Mike, 2026-10-01, focus-chip-pin b); label = the ACTION ("focus"
+  // collapses the block to the strip); inert until a subset loads.
   document.getElementById("row1").innerHTML =
+    '<span class="ctl"><label for="cFocus">View</label><button id="cFocus" title="collapse the controls to a one-row strip">focus</button></span>' +
     selectHtml("cScope", "Scope", scopeDefs, state.scope, fillFor("scope")) +
     selectHtml("cSrc", "Source", [["", "All" + fmtN(srcAllN)]].concat(srcDefs), state.src, srcFill) +
     selectHtml("cCat", "Category", withCount([["","All"]].concat(catList.map(c => [c, esc(c)])), F.cat), state.cat, fillFor("cat")) +
@@ -878,9 +888,9 @@ function render() {
   document.querySelector("header").classList.toggle("focus", focus);
   if (focus) renderStrip(); else posDetach();
   if (!loadedSel) {
-    document.getElementById("count").textContent = facets
+    setCount(facets
       ? "choose Scope and Source, then tap Apply"
-      : "loading facets…";
+      : "loading facets…");
     document.getElementById("list").innerHTML =
       '<div class="empty">' + (facets ? "Choose Scope and Source above, then tap Apply to load that set." : "Loading…") + "</div>";
     renderPlayerBar([]);
@@ -902,12 +912,13 @@ function render() {
   // default is named right after the two counts, so a widget that has
   // scrolled off its strip still announces itself.
   const cft = contentFilterText(true);
-  document.getElementById("count").textContent =
+  // setCount adds "log: N unsent" while tap-log events wait after a failed send.
+  setCount(
     (applyPending() ? "selection changed — tap Apply to load · showing " + (SCOPES.find(s => s[0] === loadedSel.scope) || ["", "All"])[1] + " · " : "") +
     v.length + " listed / " + avail + " available" +
     (cft ? " · " + cft : "") +
     (state.sort === "broccoli" ? " — Broccoli: the coach's score above what your appeal predicts" : "") +
-    " · edge stripe = " + (stripeDim() === "appeal" ? "appeal" : "coach") + " score (green 75+, gold 85+)";
+    " · edge stripe = " + (stripeDim() === "appeal" ? "appeal" : "coach") + " score (green 75+, gold 85+)");
   const list = document.getElementById("list");
   // §17.3.1 (empty-adds-placement a): the zero-nugget block is a known
   // minimum, so it sits at the list's LOW end under every Sort key: first
@@ -1671,7 +1682,7 @@ async function setListAll(vid, key) {
   const ts = new Date().toISOString();
   for (const n of targets) { n.queueList = allOn ? null : key; n.queuedAt = allOn ? null : ts; }
   render();
-  for (const n of targets) await post("/queued", { id: n.id, list: allOn ? null : key });
+  for (const n of targets) await post("/queued", { id: n.id, list: allOn ? null : key, video_id: n.video_id });
 }
 
 // Subscribe (campaign headers), both sides since 2026-08-26: joins the
@@ -1875,10 +1886,118 @@ function rnote(n) {
 }
 
 function toggle(id) {
+  const was = openId;
   openId = openId === id ? null : id;
+  // Tap log: the card that was open closes, then the tapped one opens. Both
+  // leave in one /event request.
+  if (was) logEvent("card_closed", byId.get(was) || { id: was, video_id: null });
+  if (openId) logEvent("card_opened", byId.get(openId) || { id: openId, video_id: null });
   if (openId) ensureBodies([openId]); // normally already prefetched with its window
   render();
 }
+
+// ============================================================================
+// Tap log (2026-09-30; spec: working_docs projects\campaign-scope-expansion\
+// tap-log-spec-draft2.md). Purpose: the time spent sifting, worked out later
+// from one logged row per event. Every request post() sends carries this
+// device's clock time (t) and a random per-device id (dev); the review
+// function writes the log row for a tap inside the tap's own request. Events
+// with no request of their own (card opened / closed, page hidden / shown,
+// set loaded) go to POST /event. An event that cannot be sent stays on this
+// device and leaves with the next one; while any wait after a failed send,
+// the count line reads "log: N unsent". Nothing here raises an alert: a log
+// failure must never interrupt sifting.
+// ============================================================================
+const DEVICE_ID_STORE = "ytr3_device_id";         // localStorage key: this device's random id
+const UNSENT_EVENTS_STORE = "ytr3_unsent_events";  // localStorage key: events waiting to be sent
+const UNSENT_EVENTS_MAX = 500;                     // the most events kept unsent; past it the oldest are dropped
+const DEVICE_ID = (() => {
+  try {
+    let d = localStorage.getItem(DEVICE_ID_STORE);
+    if (!d) {
+      d = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+        : "d-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+      localStorage.setItem(DEVICE_ID_STORE, d);
+    }
+    return d;
+  } catch (e) { return "no-storage"; }
+})();
+let unsentEvents = (() => {
+  try { const a = JSON.parse(localStorage.getItem(UNSENT_EVENTS_STORE) || "[]"); return Array.isArray(a) ? a : []; }
+  catch (e) { return []; }
+})();
+let unsentWaiting = unsentEvents.length > 0; // true after a failed send, or with leftovers from an earlier visit
+let inFlight = null, flushTimer = null;      // inFlight = the events an unanswered request is carrying
+let lastCountText = "";
+function saveUnsent() { try { localStorage.setItem(UNSENT_EVENTS_STORE, JSON.stringify(unsentEvents)); } catch (e) {} }
+function unsentText() { return unsentWaiting && unsentEvents.length ? " · log: " + unsentEvents.length + " unsent" : ""; }
+// The count line's one writer: its text plus the unsent-events words.
+function setCount(text) { lastCountText = text; document.getElementById("count").textContent = text + unsentText(); }
+function paintUnsent() { const el = document.getElementById("count"); if (el) el.textContent = lastCountText + unsentText(); }
+// Put one event on the device's queue. n = the nugget (or null for a page or
+// set event); value = what the event carries beyond its ids.
+function queueEvent(kind, n, value) {
+  if (!KEY) return;
+  unsentEvents.push({ kind, t: Date.now(), dev: DEVICE_ID,
+    video_id: n ? (n.video_id || null) : null, nugget_id: n ? (n.id || null) : null,
+    value: value == null ? null : value });
+  if (unsentEvents.length > UNSENT_EVENTS_MAX) unsentEvents.splice(0, unsentEvents.length - UNSENT_EVENTS_MAX);
+  saveUnsent();
+}
+// Queue an event and send the queue at the end of this turn of the page's
+// work, so events made in one tap (card closed + card opened) share a request.
+function logEvent(kind, n, value) {
+  queueEvent(kind, n, value);
+  if (!flushTimer) flushTimer = setTimeout(() => { flushTimer = null; flushEvents(false); }, 0);
+}
+function dropSent(batch) {
+  const sent = new Set(batch);
+  unsentEvents = unsentEvents.filter(e => !sent.has(e));
+  saveUnsent();
+}
+// Send every waiting event. viaBeacon = the page is being hidden: the
+// browser's beacon call is the one send it still promises to finish, but its
+// result cannot be read, so the events count as sent once the browser accepts
+// the hand-over (a loss in transit leaves that sitting's last stretch to the
+// fill rule). Otherwise an ordinary request, whose failure keeps the events.
+async function flushEvents(viaBeacon) {
+  if (!KEY) return;
+  // Events an unanswered request already carries are not sent a second time.
+  const batch = inFlight ? unsentEvents.filter(e => !inFlight.includes(e)) : unsentEvents.slice();
+  if (!batch.length) return;
+  const url = BASE + "/event?key=" + encodeURIComponent(KEY);
+  const payload = JSON.stringify({ events: batch });
+  if (viaBeacon && navigator.sendBeacon) {
+    let accepted = false;
+    try { accepted = navigator.sendBeacon(url, payload); } catch (e) {}
+    if (accepted) dropSent(batch); else unsentWaiting = true;
+    return;
+  }
+  if (inFlight) return; // one ordinary request at a time; the rest leave when it answers
+  inFlight = batch;
+  let ok = false;
+  try {
+    const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: payload, keepalive: true });
+    ok = res.ok; // stored and refused events leave alike: a refused event can never be stored
+  } catch (e) {}
+  inFlight = null;
+  if (ok) {
+    dropSent(batch);
+    if (unsentEvents.length) { flushEvents(false); return; } // events queued while this request was out
+    unsentWaiting = false;
+  } else {
+    unsentWaiting = true;
+  }
+  paintUnsent();
+}
+// Page hidden (screen off, another app, a Watch link) closes the stretch in
+// progress; page shown starts the next. Hidden is the last moment a page can
+// report reliably, so that event leaves by beacon at once.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") { queueEvent("page_hidden"); flushEvents(true); }
+  else logEvent("page_shown");
+});
+if (unsentEvents.length) setTimeout(() => flushEvents(false), 0); // leftovers from an earlier visit
 
 // A failed save must never look like a successful one.
 async function post(path, body) {
@@ -1886,9 +2005,12 @@ async function post(path, body) {
     const res = await fetch(BASE + path + "?key=" + encodeURIComponent(KEY), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      // t = this device's clock, dev = its random id (tap log).
+      body: JSON.stringify(Object.assign({ t: Date.now(), dev: DEVICE_ID }, body)),
     });
     if (!res.ok) throw new Error("HTTP " + res.status);
+    // A save got through, so the network is back: waiting log events leave now.
+    if (unsentEvents.length) flushEvents(false);
   } catch (e) {
     alert("NOT SAVED (" + path + "): " + e.message +
       "\nThe change you just made was not stored - reload and retry.");
@@ -1901,7 +2023,7 @@ async function rate(id, k) {
   n.nugAbstractRating = next;
   if (next != null && next <= 2) toasts.set(id, PICKLE_ACK); else toasts.delete(id);
   render();
-  await post("/rate", { level: "nug_abstract", id, rating: next });
+  await post("/rate", { level: "nug_abstract", id, rating: next, video_id: n.video_id });
 }
 // Level 2: the headline — pure record, no visibility or order effect.
 async function rateHl(id, k) {
@@ -1909,27 +2031,27 @@ async function rateHl(id, k) {
   const next = n.nugHlRating === k ? null : k;
   n.nugHlRating = next;
   render();
-  await post("/rate", { level: "nug_hl", id, rating: next });
+  await post("/rate", { level: "nug_hl", id, rating: next, video_id: n.video_id });
 }
 // Keeper (§13.3): a disposition after consuming; separate from the stars.
 async function setKeeper(id) {
   const n = all.find(x => x.id === id);
   n.keeperAt = n.keeperAt ? null : new Date().toISOString();
   render();
-  await post("/keeper", { id, keeper: !!n.keeperAt });
+  await post("/keeper", { id, keeper: !!n.keeperAt, video_id: n.video_id });
 }
 // Tap the "played" chip to mark unplayed (Mike, 2026-08-23).
 async function togglePlayed(id) {
   const n = all.find(x => x.id === id);
   n.playedAt = null;
   render();
-  await post("/played", { id, played: false });
+  await post("/played", { id, played: false, video_id: n.video_id });
 }
 // Played (§13.4): stamped by the renderer that finished the item.
 async function markPlayed(n) {
   if (!n || n.playedAt) return;
   n.playedAt = new Date().toISOString();
-  await post("/played", { id: n.id, played: true });
+  await post("/played", { id: n.id, played: true, video_id: n.video_id });
 }
 // One list per nugget: tapping the list it is on clears it; another moves it.
 async function setList(id, key) {
@@ -1937,7 +2059,7 @@ async function setList(id, key) {
   const next = n.queueList === key ? null : key;
   n.queueList = next; n.queuedAt = next ? new Date().toISOString() : null;
   render();
-  await post("/queued", { id, list: next });
+  await post("/queued", { id, list: next, video_id: n.video_id });
 }
 
 // Pace = (used/quota) / elapsed-fraction, colored like the ops burn cards.
@@ -2105,6 +2227,8 @@ async function loadData() {
     .concat([...seen].filter(c => !(c in catTtls)).sort());
   loadedSel = sel;
   order = null; toasts.clear(); paintLimit = WINDOW; openId = null; gToggled = new Set();
+  // Tap log: a set was loaded (Apply). Any card open before it counts as closed.
+  logEvent("set_loaded", null, JSON.stringify({ scope: sel.scope || "all", source: sel.src || "", count: all.length }));
   render();
 }
 load();

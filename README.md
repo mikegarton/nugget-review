@@ -18,8 +18,14 @@ bookmarks and an old N-add's share action keep working.
   nuggets — you asked, so the answer is shown — at the low end of the list,
   each row with a "retire" button that stamps
   `yt_videos.manual_empty_retired_at`; the count line names every
-  non-default content filter, viewer-spec §17). Installable as **N-view**
-  (`view/manifest.webmanifest`).
+  non-default content filter, viewer-spec §17). Since 2026-09-30 it also
+  feeds the tap log (viewer-spec §18): every tap carries the device's clock
+  time and a random device id, and card opened/closed, page hidden/shown
+  and Apply are sent as events of their own; an event that cannot be sent
+  waits on the device and the count line ends "log: N unsent". The method
+  for tuning the sift-time values worked out from that log is recorded in
+  working_docs `studies\log-scale-two-humps-crossover-case-study.md`.
+  Installable as **N-view** (`view/manifest.webmanifest`).
 - `view/clips.html` — the clip player (2026-08-22): plays the queued
   nuggets as clips back-to-back in an embedded YouTube player — one tap,
   phone in the pocket, audio on earbuds. Same key as the viewer.
@@ -27,8 +33,10 @@ bookmarks and an old N-add's share action keep working.
   dropdown, with the A− A+ text-size pair at the bar's right end (sizes
   the whole page, remembered per device), shows one section at a time (Limits & burn with pause/resume
   searches per campaign, campaign yield, sources, category tags, channel
-  economics lifetime and by month, parameters, code constants). The five
-  metric tables are instances of the table-viewer module, loaded from
+  economics lifetime and by month, sift time (sittings, and time by source
+  and campaign phrase, worked out from the tap log; since 2026-09-30),
+  parameters, code constants). The metric tables are instances of the
+  table-viewer module, loaded from
   its own Pages site, `https://mikegarton.github.io/table-viewer/table-viewer-v1.js`,
   since 2026-09-24 (the copy in `ops/` was removed that day):
   enum filters with All first, a narrow panel with min/max bounds, Sort

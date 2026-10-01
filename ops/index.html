@@ -182,6 +182,33 @@ buttons on subscribed channels: nuggets stops the feed, YouTube unsubscribes the
 <div class="note">The month filter replaces the old month picker; All shows every month.</div>
 </section>
 
+<section data-sec="sift">
+<h2>Sift time</h2>
+<div class="note" style="margin:0 0 6px"><b>Sittings, newest first.</b> One row per
+sitting: one unbroken run of viewer events on one device; a gap longer than
+<b>sift_sitting_break_minutes</b> starts the next sitting.</div>
+<div id="siftSittings"></div>
+<div class="note" style="margin:14px 0 6px"><b>Sift time by source.</b> One row per
+source and per campaign phrase, as peers.</div>
+<div id="siftSources"></div>
+<div class="note">Worked out from the tap log (one row per viewer event: every
+star tap, K, list button, card opened and closed, page hidden and shown, set
+loaded); nothing here is stored. <b>Minutes sifted</b> = the time between
+neighbouring events. Time with the page hidden counts zero. A stretch longer
+than <b>sift_stretch_cap_seconds</b>, and the open last stretch of a sitting,
+count as <b>sift_fill_seconds</b> and are shown again under <b>filled</b>: that
+part is a stand-in, not a measurement. <b>Taps</b> = presses on a star row, K or
+a list button. A stretch belongs to the item it ends on; the stretch after an
+item's last tap stays with that item until the next item's first tap or until
+the page is hidden, so reading a new item's title is credited one item back.
+The counts in the second table (rated at tier two and tier three, K, 5★ to 1–2★)
+are the last logged value per nugget since the tap log began, the same window as
+the minutes; ratings made before the log are not in them. <b>Median tier-three</b> =
+the middle length, in seconds, of the stretches spent with a card open, filled
+ones left out. The two per-hour columns are provisional best guesses, to be
+confirmed and tuned once 300 rating taps are logged.</div>
+</section>
+
 <section data-sec="knobs">
 <h2>Pipeline parameters — yt_params</h2>
 <div class="twrap"><table id="knobs"></table></div>
@@ -237,6 +264,7 @@ const SECTIONS = [
   ["tags", "Category tags — coverage & TTL"],
   ["totals", "Channel economics — lifetime"],
   ["monthly", "Channel economics — by month"],
+  ["sift", "Sift time"],
   ["knobs", "Pipeline parameters — yt_params"],
   ["consts", "Code constants"],
 ];
@@ -391,6 +419,44 @@ const SPECS = {
       { key: "primary_nuggets", label: "primary", decimals: 0 },
       // The fluff detector: >60% coverage is a colour, never a filter.
       { key: "coverage_pct", label: "coverage %", decimals: 1, mark: (v) => Number(v) > 60 ? "warn" : null },
+    ] },
+  // Sift time (tap log, 2026-09-30): both tables read views worked out from
+  // yt_viewer_events. Column order = the tap-log spec's section 6.
+  siftSittings: { name: "sift-sittings", site: "ops", identity: "sitting", sort: { key: "sitting", dir: "desc" },
+    columns: [
+      { key: "sitting", label: "sitting started (UTC)" },
+      { key: "sift_minutes", label: "minutes sifted", decimals: 1 },
+      { key: "filled_minutes", label: "of those, filled", decimals: 1 },
+      { key: "events", label: "events", decimals: 0 },
+      { key: "taps", label: "taps", decimals: 0 },
+      { key: "items_touched", label: "items touched", decimals: 0 },
+      { key: "nuggets_rated_tier_two", label: "rated at tier two", decimals: 0 },
+      { key: "nuggets_rated_tier_three", label: "rated at tier three", decimals: 0 },
+      { key: "keepers_set", label: "Keepers set", decimals: 0 },
+      { key: "device", label: "device", visible: false },
+      { key: "sitting_number", visible: false },
+      { key: "device_id", visible: false },
+      { key: "sitting_started_at", visible: false },
+    ] },
+  siftSources: { name: "sift-by-source", site: "ops", identity: "ident", sort: { key: "sift_minutes", dir: "desc" },
+    columns: [
+      { key: "ident", label: "source or phrase" },
+      { key: "row_kind", label: "kind" },
+      { key: "sift_minutes", label: "minutes sifted", decimals: 1 },
+      { key: "filled_minutes", label: "of those, filled", decimals: 1 },
+      { key: "items_touched", label: "items touched", decimals: 0 },
+      { key: "rated_tier_two", label: "rated at tier two", decimals: 0 },
+      { key: "rated_tier_three", label: "rated at tier three", decimals: 0 },
+      { key: "keepers", label: "K", decimals: 0 },
+      { key: "five_star", label: "5★", decimals: 0 },
+      { key: "four_star", label: "4★", decimals: 0 },
+      { key: "three_star", label: "3★", decimals: 0 },
+      { key: "one_or_two_star", label: "1–2★", decimals: 0 },
+      { key: "median_tier_three_seconds", label: "median tier-three (s)", decimals: 0 },
+      { key: "four_or_five_per_hour", label: "4–5★ per hour (provisional)", decimals: 1 },
+      { key: "keepers_per_hour", label: "K per hour (provisional)", decimals: 1 },
+      { key: "label", visible: false },
+      { key: "campaign", visible: false },
     ] },
 };
 
@@ -573,6 +639,15 @@ function render() {
   mountOrUpdate("tags", ops.tag_coverage || []);
   mountOrUpdate("totals", ops.channel_totals || []);
   mountOrUpdate("monthly", (ops.channel_monthly || []).map(r => Object.assign({}, r, { month: String(r.month).slice(0, 7) })));
+  // Sift time. A sitting's identity is its start time to the second; a phrase
+  // row's identity carries its campaign, since two campaigns can hold one phrase.
+  mountOrUpdate("siftSittings", (ops.sift_sittings || []).map(r => Object.assign({}, r, {
+    sitting: String(r.sitting_started_at || "").slice(0, 19).replace("T", " "),
+    device: String(r.device_id || "").slice(0, 8),
+  })));
+  mountOrUpdate("siftSources", (ops.sift_by_source || []).map(r => Object.assign({}, r, {
+    ident: r.row_kind === "campaign phrase" ? "“" + r.label + "” · " + (r.campaign || "?") : r.label,
+  })));
   renderKnobs();
 }
 
@@ -613,6 +688,9 @@ const KNOB_NAMES = {
   speech_words_per_minute: "Spoken-word rate (words/min)",
   viz_hi: "Needs-viz video threshold",
   viz_lo: "Needs-viz audio threshold",
+  sift_sitting_break_minutes: "Gap that ends a sitting (minutes)",
+  sift_stretch_cap_seconds: "Longest stretch trusted as attention (s)",
+  sift_fill_seconds: "What an over-cap or open stretch counts as (s)",
 };
 
 // Groups (2026-09-11, Mike): one header per thing governed; scope = which
@@ -640,6 +718,8 @@ const KNOB_GROUPS = [
     keys: ["tts_vendor", "tts_model", "tts_voice", "card_template_version"] },
   { title: "Viewer", scope: "yt-review /data · viewer",
     keys: ["clip_default_seconds", "speech_words_per_minute", "viz_hi", "viz_lo"] },
+  { title: "Sift time", scope: "the yt_sift_* views · ops page section Sift time",
+    keys: ["sift_sitting_break_minutes", "sift_stretch_cap_seconds", "sift_fill_seconds"] },
 ];
 
 function knobRow(p) {
@@ -725,6 +805,15 @@ const CODE_CONSTANTS = [
   ]},
   { group: "yt-review", rows: [
     ["default_ttl_days", "180", "yt-review /data", "Soft-expiry TTL for an unknown or legacy tag; known tags use yt_categories.ttl_days"],
+  ]},
+  { group: "Tap log (viewer and yt-review)", rows: [
+    ["UNSENT_EVENTS_MAX", "500", "viewer (view/index.html)", "The most tap-log events a device keeps while they cannot be sent; past it the oldest are dropped. Rule: about a week of sifting"],
+    ["VIEWER_EVENTS_PER_REQUEST_MAX", "500", "yt-review /event", "The most events one request may carry. Rule: equals UNSENT_EVENTS_MAX, so a full device queue leaves in one request"],
+    ["SIFT_SITTINGS_ROWS_TO_OPS", "200", "yt-review /ops", "The newest sittings sent to the ops page's Sittings table. Rule: more than half a year at one sitting a day"],
+    ["DEVICE_CLOCK_MAX_AHEAD_MS", "1 day", "yt-review", "A device clock reading later than the server clock by more than this is dropped and the row keeps the server's arrival time alone. Rule: a wrong time zone or date setting moves a clock by up to a day; more is a broken clock"],
+    ["DEVICE_CLOCK_EARLIEST_MS", "2026-09-30", "yt-review", "A device clock reading earlier than the tap log's first day is dropped the same way"],
+    ["DEVICE_ID_STORE", "ytr3_device_id", "viewer (view/index.html)", "The device storage key holding the random id that separates one device's events from another's"],
+    ["UNSENT_EVENTS_STORE", "ytr3_unsent_events", "viewer (view/index.html)", "The device storage key holding events that wait to be sent"],
   ]},
   { group: "yt-view-sampler (velocity study)", rows: [
     ["STUDY_START", "2026-08-20", "yt-view-sampler", "Candidates found on or after this date form the cohort"],
