@@ -93,10 +93,14 @@ Types: <b>expires</b> = prepaid allotment, unused value is lost at reset;
 <b>ceiling</b> = do-not-exceed cap; <b>metered</b> = pay-per-use judged against a
 chosen budget — nothing blocks at it. The database-size row has no growth
 history to project from, so it shows the share used now in the same five colors and has no tick. The tick on each bar marks where
-"exactly on pace" would be right now. A campaign row's <b>pause searches</b>
-stops every searching phrase of that campaign with one shared stamp; its
-already-promoted videos keep processing; <b>resume searches</b> restarts
-exactly the phrases that stamp stopped (viewer headers show them as Stopped).</div>
+"exactly on pace" would be right now. A campaign and each of its phrases hold
+one of draft, active, stopped; a phrase is searched only while it and its
+campaign are both active. A campaign row's <b>stop campaign</b> sets the
+campaign to stopped and stops every active phrase of it with one shared
+stamp; its waiting videos are not processed while it is stopped. <b>start
+campaign</b> sets it to active and restarts exactly the phrases that stamp
+stopped (viewer headers show a stopped phrase as Stopped). The campaign
+sheet changes the same words.</div>
 <div class="twrap"><table id="limits"><tr><td class="empty">Loading…</td></tr></table></div>
 <div id="killed" class="cards" style="margin-top:8px"></div>
 <div id="sheetSync" class="note" style="margin-top:8px"></div>
@@ -614,10 +618,11 @@ function render() {
   limits.querySelectorAll("td.acts").forEach((td) => {
     const l = rows[Number(td.dataset.i)];
     if (!l || !l.campaign || l.phrases.total === 0) return;
-    const pause = l.phrases.searching > 0;
-    const action = pause
-      ? { label: "pause searches", route: "/pause-campaign-searches", body: { campaign_id: l.campaign.id }, guard: "none", done: "paused" }
-      : { label: "resume searches", route: "/resume-campaign-searches", body: { campaign_id: l.campaign.id }, guard: "none", done: "searching" };
+    // The campaign's own status decides the button (sheet spec draft 6,
+    // 2026-10-06); the routes keep their 2026-09-22 paths.
+    const action = l.campaign.status === "active"
+      ? { label: "stop campaign", route: "/pause-campaign-searches", body: { campaign_id: l.campaign.id }, guard: "none", done: "stopped" }
+      : { label: "start campaign", route: "/resume-campaign-searches", body: { campaign_id: l.campaign.id }, guard: "none", done: "active" };
     td.appendChild(TableViewer.actionButton(action, l.campaign, { request: apiRequest, afterAction }));
   });
 
@@ -637,7 +642,7 @@ function render() {
   document.getElementById("sheetSync").innerHTML = "<b>Campaign sheet.</b> " + (ls
     ? "Last sync arrived " + esc(String(ls.synced_at).slice(0, 16).replace("T", " ")) + " UTC: " +
       ls.rows_accepted + " rows accepted, " + ls.rows_refused + " refused, " + ls.rows_restored +
-      " restored (" + ls.campaigns_received + " campaign rows and " + ls.phrases_received + " phrase rows received)."
+      " written back (" + ls.campaigns_received + " campaign rows and " + ls.phrases_received + " phrase rows received)."
     : "No sync has arrived yet.") +
     " Campaigns and phrases are read from the database; the sheet only updates them.";
 
@@ -836,7 +841,11 @@ const CODE_CONSTANTS = [
     ["SHEET_PHRASES_ON_WARNING_DEFAULT", "60", "yt-review /sheet-sync", "The warning level used only when the parameter sheet_phrases_on_warning_count cannot be read. Rule: equals that parameter's first value"],
     ["SHEET_TIER_MAX", "32767", "yt-review /sheet-sync", "The largest tier a campaign row may hold; a tier is any whole number from 1. Rule: the largest value the database column (smallint) can hold. No pipeline code reads the tier today"],
     ["SHEET_DAILY_VIDEO_CAP_MAX", "1000", "yt-review /sheet-sync", "Upper bound of a campaign row's daily video cap. No pipeline code reads that cap today; the bound only refuses a typing slip"],
+    ["SHEET_TIER_DEFAULT", "1", "yt-review /sheet-sync", "Stored and written back for an empty tier cell. Rule: the lowest allowed value; no code reads the tier (ruling unread-required-cells b, 2026-10-06)"],
+    ["SHEET_DAILY_VIDEO_CAP_DEFAULT", "0", "yt-review /sheet-sync", "Stored and written back for an empty daily_video_cap cell. Rule: the lowest allowed value; no code reads the cap (ruling unread-required-cells b, 2026-10-06)"],
     ["SYNC_TIMER_HOUR", "5", "the sheet's script (apps-script/campaign_sheet_sync.gs)", "Hour of the daily sync in the script's time zone. Rule: early morning, before the sheet is opened for the day"],
+    ["HOT_FILL, COLD_FILL", "#f4cccc, #cfe2f3", "the sheet's script", "The fill of an empty required cell and of a not-current output row (hot), and of a filled required cell and a current output row (cold). PROPOSED colors, spec draft 6 section 10"],
+    ["STATUS_FILLS", "draft #d9d9d9, active #d9ead3, stopped #f4cccc", "the sheet's script", "The fill of a status cell by its word, the same on both tabs. PROPOSED colors, spec draft 6 section 10"],
   ]},
   { group: "yt-view-sampler (velocity study)", rows: [
     ["STUDY_START", "2026-08-20", "yt-view-sampler", "Candidates found on or after this date form the cohort"],
