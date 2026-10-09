@@ -268,7 +268,7 @@ const SORTS = [
 const RATEFS = [["","All"],["unrated","Unrated"],["5","5 ★"],["4","≥ 4 ★"],["3","3 ★"],["pickled","Pickled (1–2 ★)"],["keepers","Keepers"]];
 // yt_nuggets.nug_ai_abstract_rating column comment is the source of truth
 // for this scale. Three independent levels (spec §15, 2026-09-17): header
-// stars = yt_videos.med_ai_hl_rating (title card), card-line stars =
+// stars = yt_media.med_ai_hl_rating (title card), card-line stars =
 // nug_ai_hl_rating (headline), expanded stars = nug_ai_abstract_rating
 // (abstract). Only the abstract level drives pickled / open / filters / sort.
 const SCALE = { 1: "never gonna look (pickled)", 2: "unlikely to use (pickled)",
@@ -1542,7 +1542,7 @@ function manualEmptyHtml() {
     showing + " with nothing to show</b> (you asked, so here's the answer)</div>" +
     rows.join("") + "</div>";
 }
-// Retire (or undo) one zero-nugget row: stamps yt_videos.manual_empty_retired_at
+// Retire (or undo) one zero-nugget row: stamps yt_media.manual_empty_retired_at
 // through POST /retire-empty (viewer-spec §17.3.2). The row is repainted at
 // once; the next /data omits stamped rows.
 async function retireEmpty(videoId, retired) {
@@ -1622,7 +1622,7 @@ function scoreStrip(n) {
 function ghead(n, g) {
   const isC = isGroupCollapsed(n.video_id);
   const dur = n.durationSeconds ? " in " + fmtDur(n.durationSeconds) : "";
-  // Header stars = the title-card rating, yt_videos.med_ai_hl_rating (spec
+  // Header stars = the title-card rating, yt_media.med_ai_hl_rating (spec
   // §15.3.1, 2026-09-17). One value per video or post; touches no nugget.
   const medRating = n.medHlRating || 0;
   const humble = n.plainTitle || n.headline || n.videoTitle || n.channelLabel;
@@ -2175,7 +2175,7 @@ async function loadData() {
   // fallback for an older function build.
   const videos = data.videos || {};
   all = (data.nuggets || []).map(n => {
-    const v = n.yt_videos || videos[n.video_id] || {};
+    const v = n.yt_media || videos[n.video_id] || {};
     return {
       ...n,
       channelLabel: v.yt_channels?.label || v.channel_id || "?",
@@ -2204,7 +2204,7 @@ async function loadData() {
       playedAt: n.played_at || null,
       keeperAt: n.keeper_at || null,
       extra: !!n.extra,            // ride-along listed item outside the loaded scope (§13.2)
-      media: v.media || null,      // attached media record (§13.1)
+      media: v.attachments ?? v.media ?? null,      // attached media record (§13.1); the payload key is attachments since the items table rename, media accepted until every deploy has landed
       reviewedAt: n.reviewed_at || null,
     };
   });

@@ -17,7 +17,7 @@ bookmarks and an old N-add's share action keep working.
   clips; under Scope = My adds it shows the manual adds that produced zero
   nuggets — you asked, so the answer is shown — at the low end of the list,
   each row with a "retire" button that stamps
-  `yt_videos.manual_empty_retired_at`; the count line names every
+  `yt_media.manual_empty_retired_at`; the count line names every
   non-default content filter, viewer-spec §17). Since 2026-09-30 it also
   feeds the tap log (viewer-spec §18): every tap carries the device's clock
   time and a random device id, and card opened/closed, page hidden/shown
@@ -94,7 +94,7 @@ before the code, plus the controls-by-state-variables matrix.
 
 1. Filter and sort the abstracts, read them, rate them. Three independent
    star rows, one per reading depth (Mike, 2026-09-17; viewer-spec §15):
-   header stars rate the title card (`yt_videos.med_ai_hl_rating`),
+   header stars rate the title card (`yt_media.med_ai_hl_rating`),
    card-line stars rate the headline (`yt_nuggets.nug_ai_hl_rating`),
    expanded-card stars rate the abstract (`yt_nuggets.nug_ai_abstract_rating`,
    the only level that pickles, filters or sorts). Scale: 1 never gonna
