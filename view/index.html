@@ -247,7 +247,9 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("../sw.js").c
 // Key "yt_subscribed" (was "subs" — it misled in code as it did on screen).
 const SCOPES = [["","All"],["yt_subscribed","YT-subscrip"],["substack","Substack"],["substack_paid","Substack-paid"],["manual","My adds"],["campaign","Campaign"]];
 const AGES   = [["","All"],["2","≤ 2 days"],["10","≤ 10 days"],["60","≤ 2 months"],["180","≤ 6 months"],["365","≤ 1 year"]];
-const GROUPS = [["","None"],["video","Video"]];
+// Group unit label "Item" (Mike, 2026-10-11, group-unit-word a): a group is one
+// item, a YouTube video or a Substack post; the saved state value stays "video".
+const GROUPS = [["","None"],["video","Item"]];
 // Linked dropdown (spec §3.5a, 2026-10-11, ruling linked-filter a): attached
 // audio or video of a text item, read from the attachments record (§19).
 const LINKED = [["","All"],["audio","audio"],["video","video"],["both","audio + video"],["any","any attached"],["none","none attached"]];
@@ -845,7 +847,7 @@ function contentFilterText(withScope) {
   return out.join(" · ");
 }
 function posText() {
-  const vid = state.group === "video" && posVideo ? "video " + posVideo + " of " + posTotals.videos + " · " : "";
+  const vid = state.group === "video" && posVideo ? "item " + posVideo + " of " + posTotals.videos + " · " : "";
   const cft = contentFilterText(false);
   return vid + (posNugget || "–") + " of " + posTotals.listed + " listed / " + posTotals.avail + " available" + (cft ? " · " + cft : "");
 }
@@ -869,7 +871,7 @@ function renderStrip() {
   } else if (mode === "order") {
     const sortLab = (SORTS.find(s => s[0] === state.sort) || [])[1] || state.sort;
     sub = '<span class="stxt" id="sSel" title="tap to open the controls"><b>' + esc(sortLab) + "</b> " +
-      (state.dir === "asc" ? "▲" : "▼") + (state.group === "video" ? " · by video" : "") + "</span>" +
+      (state.dir === "asc" ? "▲" : "▼") + (state.group === "video" ? " · by item" : "") + "</span>" +
       (state.group
         ? '<button id="sFold" class="' + (collapseMode ? "user-set" : "") + '" title="fold or unfold every group">' +
           (collapseMode ? "expand" : "collapse") + "</button>"
@@ -1687,7 +1689,7 @@ function ghead(n, g) {
     '<div class="gmeta">' +
       "<b>" + esc(n.channelLabel) + "</b>" +
       "<span>" + fmtD(n.publishedAt || n.created_at) + "</span>" +
-      '<span class="chip">' + g.length + " nuggets" + dur + "</span>" + hype + gen + campaignChips(n) +
+      '<span class="chip">' + g.length + " nuggets" + dur + "</span>" + hype + gen + linkedContentChip(n) + campaignChips(n) +
       groupListButtons(n.video_id, g) +
       '<a class="watch gwatch" target="_blank" rel="noopener" href="' +
         (isPostSource(n) ? esc(n.contentUrl || "#") : "https://www.youtube.com/watch?v=" + n.video_id) + '">' +
