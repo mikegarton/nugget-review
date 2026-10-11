@@ -276,7 +276,8 @@ const SCALE = { 1: "never gonna look (pickled)", 2: "unlikely to use (pickled)",
 const STAR = '<svg aria-hidden="true"><use href="#star5"/></svg>'; // one star, styled by .stars / .lit (spec §16.2)
 const END_MARGIN = 30; // display clamp: a link never lands past duration − 30 s (spec §7.2)
 // Destination lists (2026-08-23): exactly one per nugget; the suggestion
-// (dashed outline) follows the data — posts -> R; needs_viz >= viz_hi -> V;
+// (dashed outline) follows the data — posts -> their linked content (audio -> A,
+// embedded video -> V, neither -> R; spec §19, 2026-10-11); needs_viz >= viz_hi -> V;
 // <= viz_lo -> A; between or unscored -> A and V.
 const LISTS = [["audio", "A", "audio — hands-free clips page"], ["video", "V", "video — watch list (synced to the YouTube playlist)"], ["read", "R", "reading list"]];
 let vizHi = 70, vizLo = 30;
@@ -387,8 +388,31 @@ function queued(n) { return !!(n.queueList || n.queuedAt); } // on any list
 // carries transcripts). A shape test, not a source list — every source gets
 // the same treatment (Mike, 2026-08-24).
 function isPostSource(n) { return n.source !== "youtube"; }
+// Linked content of a post (spec §19): the attachments record's audio_url and
+// video_ids. Returns null when the item is a YouTube video or holds neither.
+function linkedContent(n) {
+  if (!isPostSource(n)) return null;
+  const m = n.media || {};
+  const audio = !!m.audio_url, video = !!(m.video_ids && m.video_ids.length);
+  if (!audio && !video) return null;
+  return { audio, video, videoCount: video ? m.video_ids.length : 0, audioType: m.audio_type || "" };
+}
+// The chip on the card's meta row (spec §19.3.1; words ruled chip-words b).
+function linkedContentChip(n) {
+  const lc = linkedContent(n);
+  if (!lc) return "";
+  const word = lc.audio && lc.video ? "audio + video" : lc.audio ? "audio" : "video";
+  const detail = [lc.audio ? "attached audio file" + (lc.audioType ? " (" + lc.audioType + ")" : "") : "",
+                  lc.video ? (lc.videoCount > 1 ? lc.videoCount + " embedded videos" : "embedded video") : ""].filter(Boolean).join("; ");
+  return '<span class="chip" title="linked content: ' + esc(detail) + '">' + word + "</span>";
+}
 function suggestedLists(n) {
-  if (isPostSource(n)) return ["read"];
+  if (isPostSource(n)) {
+    // Spec §19.3.2 (ruling suggestion-r-keep a): the record decides; R only when it holds neither.
+    const lc = linkedContent(n);
+    if (!lc) return ["read"];
+    return [lc.audio ? "audio" : null, lc.video ? "video" : null].filter(Boolean);
+  }
   const v = n.needsViz;
   if (v == null) return ["audio", "video"];
   if (v >= vizHi) return ["video"];
@@ -1845,6 +1869,7 @@ function card(n) {
       categoriesOf(n).map(c => '<span class="chip">' + esc(c) + "</span>").join("") +
       (ex ? '<span class="chip exp" title="unrated and older than this tag\'s TTL">expired: ' + esc(ex.tag) + " " + ex.days + "d</span>" : "") +
       (isPost ? '<span class="chip">' + esc(n.source) + "</span>" : "") +
+      linkedContentChip(n) +
       (n.sourceKey && n.sourceKey.endsWith("_manual")
         ? '<span class="chip" style="color:var(--accent)">manual add</span>' : "") +
       campaignChips(n) +
