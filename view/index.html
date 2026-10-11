@@ -2204,7 +2204,7 @@ async function loadData() {
       playedAt: n.played_at || null,
       keeperAt: n.keeper_at || null,
       extra: !!n.extra,            // ride-along listed item outside the loaded scope (§13.2)
-      media: v.attachments ?? v.media ?? null,      // attached media record (§13.1); the payload key is attachments since the items table rename, media accepted until every deploy has landed
+      media: v.attachments || null,      // attached media record (§13.1); the payload key is attachments since the items table rename, media accepted until every deploy has landed
       reviewedAt: n.reviewed_at || null,
     };
   });
