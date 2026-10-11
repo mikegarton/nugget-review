@@ -248,6 +248,9 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("../sw.js").c
 const SCOPES = [["","All"],["yt_subscribed","YT-subscrip"],["substack","Substack"],["substack_paid","Substack-paid"],["manual","My adds"],["campaign","Campaign"]];
 const AGES   = [["","All"],["2","≤ 2 days"],["10","≤ 10 days"],["60","≤ 2 months"],["180","≤ 6 months"],["365","≤ 1 year"]];
 const GROUPS = [["","None"],["video","Video"]];
+// Linked dropdown (spec §3.5a, 2026-10-11, ruling linked-filter a): attached
+// audio or video of a text item, read from the attachments record (§19).
+const LINKED = [["","All"],["audio","audio"],["video","video"],["both","audio + video"],["any","any attached"],["none","none attached"]];
 // Sort keys (8-10 §3.1 names; Coach/Broccoli renamed 2026-08-22). Each is
 // [key, label, value-of-nugget, null-allowed]. Nulls sort LAST in both
 // directions; ties break on Appeal desc then id — a total, stable order.
@@ -286,7 +289,7 @@ let vizHi = 70, vizLo = 30;
 // hide items a renderer already finished (default) or show them dimmed.
 // ytRoute: how video items play on the Audio list — in-page clip (screen
 // on) or the YouTube app (Premium; locked screen; whole-video fallback).
-const DEFAULTS = { scope: "", src: "", cat: "", domain: "", age: "", ratef: "",
+const DEFAULTS = { scope: "", src: "", cat: "", domain: "", age: "", linked: "", ratef: "",
   expired: false, listed: "all", played: false, ytRoute: "page", sort: "appeal", dir: "desc", sortOrigin: "user",
   group: "", zoom: 1,
   // Focus strip (spec §14): both remembered on the device (strip-default b).
@@ -313,6 +316,7 @@ if (state.scope === "subs") state.scope = "yt_subscribed";
 if (state.hideQ === true && !state.listed) state.listed = "hidden";
 delete state.hideQ;
 if (!LISTED.some(l => l[0] === state.listed)) state.listed = "all";
+if (!LINKED.some(l => l[0] === state.linked)) state.linked = "";
 // A Sort written by the removed Group=Video side effect (Mike 2026-09-19,
 // d18 stale-side-effect-sort a): back to the default Sort, mark dropped.
 if (state.sortOrigin === "side_effect") { state.sort = DEFAULTS.sort; state.sortOrigin = DEFAULTS.sortOrigin; localStorage.setItem("ytr3", JSON.stringify(state)); }
@@ -497,8 +501,21 @@ function catPass(n) { return !state.cat || categoriesOf(n).includes(state.cat); 
 function domPass(n) { return !state.domain || n.domain === state.domain; }
 function ageDays(n) { return (Date.now() - new Date(n.publishedAt || n.created_at)) / 86400000; }
 function agePass(n) { return !state.age || ageDays(n) <= Number(state.age); }
+// Linked (spec §3.5a): audio = attached audio (with or without video); video
+// = attached video likewise; both; any = either; none = neither (a YouTube
+// item attaches nothing — it is the video — so it counts as none).
+function linkedPass(n) {
+  const v = state.linked; if (!v) return true;
+  const lc = linkedContent(n);
+  if (v === "none") return !lc;
+  if (!lc) return false;
+  if (v === "audio") return lc.audio;
+  if (v === "video") return lc.video;
+  if (v === "both") return lc.audio && lc.video;
+  return true; // any
+}
 function contentPass(n) {
-  return scopePass(n) && sourcePass(n) && catPass(n) && domPass(n) && agePass(n);
+  return scopePass(n) && sourcePass(n) && catPass(n) && domPass(n) && agePass(n) && linkedPass(n);
 }
 // Scope match for one value (mirror of scopePass's switch, for counting).
 function scopeMatch(n, val) {
@@ -521,7 +538,7 @@ function scopeMatch(n, val) {
 function facetCounts() {
   // Scope and Source counts are tier-1 (server facets); these are the
   // within-subset counts for the client-side filters.
-  const F = { cat: new Map(), domain: new Map(), age: new Map(), rating: new Map() };
+  const F = { cat: new Map(), domain: new Map(), age: new Map(), linked: new Map(), rating: new Map() };
   const bump = (m, k) => m.set(k, (m.get(k) || 0) + 1);
   for (const n of all) {
     const j = judgmentPass(n);
@@ -529,11 +546,17 @@ function facetCounts() {
     const jx = (state.played || !n.playedAt) && (lm
       ? n.queueList === lm // option b: the list wins visibility in a mode
       : (state.expired || !isExpired(n)) && !(state.listed === "hidden" && queued(n)) && !n.extra); // judgment minus the rating dropdown
-    const sc = scopePass(n), sr = sourcePass(n), ca = catPass(n), dm = domPass(n), ag = agePass(n);
-    if (j && sc && sr && dm && ag) { bump(F.cat, ""); for (const c of categoriesOf(n)) bump(F.cat, c); }
-    if (j && sc && sr && ca && ag) { bump(F.domain, ""); if (n.domain) bump(F.domain, n.domain); }
-    if (j && sc && sr && ca && dm) { bump(F.age, ""); const d = ageDays(n); for (const [val] of AGES) if (val && d <= Number(val)) bump(F.age, val); }
-    if (jx && sc && sr && ca && dm && ag) {
+    const sc = scopePass(n), sr = sourcePass(n), ca = catPass(n), dm = domPass(n), ag = agePass(n), lk = linkedPass(n);
+    if (j && sc && sr && dm && ag && lk) { bump(F.cat, ""); for (const c of categoriesOf(n)) bump(F.cat, c); }
+    if (j && sc && sr && ca && ag && lk) { bump(F.domain, ""); if (n.domain) bump(F.domain, n.domain); }
+    if (j && sc && sr && ca && dm && lk) { bump(F.age, ""); const d = ageDays(n); for (const [val] of AGES) if (val && d <= Number(val)) bump(F.age, val); }
+    if (j && sc && sr && ca && dm && ag) {
+      bump(F.linked, "");
+      const lc = linkedContent(n);
+      if (!lc) bump(F.linked, "none");
+      else { bump(F.linked, "any"); if (lc.audio) bump(F.linked, "audio"); if (lc.video) bump(F.linked, "video"); if (lc.audio && lc.video) bump(F.linked, "both"); }
+    }
+    if (jx && sc && sr && ca && dm && ag && lk) {
       const r = n.nugAbstractRating;
       if (pickled(n)) bump(F.rating, "pickled");
       else {
@@ -662,7 +685,7 @@ function applyPending() {
 }
 
 function renderControls() {
-  // Row 1 — content: Scope, Source, Category, Domain, Age.
+  // Row 1 — content: Scope, Source, Category, Domain, Age, Linked.
   const srcDefs = sourceDefs();
   // Scope's declared side-effect on Source: a selection that narrowed away
   // resets to All and takes the yellow fill until the user touches Source.
@@ -690,7 +713,8 @@ function renderControls() {
     selectHtml("cSrc", "Source", [["", "All" + fmtN(srcAllN)]].concat(srcDefs), state.src, srcFill) +
     selectHtml("cCat", "Category", withCount([["","All"]].concat(catList.map(c => [c, esc(c)])), F.cat), state.cat, fillFor("cat")) +
     selectHtml("cDomain", "Domain", withCount([["","All"]].concat(domains.map(d => [d, esc(d)])), F.domain), state.domain, fillFor("domain")) +
-    selectHtml("cAge", "Age", withCount(AGES, F.age), state.age, fillFor("age"));
+    selectHtml("cAge", "Age", withCount(AGES, F.age), state.age, fillFor("age")) +
+    selectHtml("cLinked", "Linked", withCount(LINKED, F.linked), state.linked, fillFor("linked"));
   // Row 2 — order: Group, Sort, Dir (cause left of effect; Group writes
   // Sort's default, so its yellow side-effect appears downstream).
   const sortFill = state.sortOrigin === "side_effect" ? "side-effect" : fillFor("sort");
@@ -729,8 +753,9 @@ function renderControls() {
   bind("cCat", "cat");
   bind("cDomain", "domain");
   bind("cAge", "age");
+  bind("cLinked", "linked");
   // Everything but Scope/Source/Apply is inert until a subset is loaded.
-  for (const id of ["cCat", "cDomain", "cAge", "cGroup", "cFold", "cSort", "cDir", "cRate", "cExp", "cPlayed", "cListed", "zoomIn", "zoomOut", "cFocus"]) {
+  for (const id of ["cCat", "cDomain", "cAge", "cLinked", "cGroup", "cFold", "cSort", "cDir", "cRate", "cExp", "cPlayed", "cListed", "zoomIn", "zoomOut", "cFocus"]) {
     const el = document.getElementById(id);
     if (el) el.disabled = !loadedSel;
   }
@@ -804,8 +829,8 @@ function sourceLabel(scope, s) {
 // §17.3.3 (Mike 2026-09-22, off-screen-filter-signal b): content filters not
 // at their default, in row-1 order, as "<widget label> <option name>" without
 // the option's count. Scope and Source come from the LOADED selection (what is
-// on screen); Category, Domain, Age from the live state. The count line names
-// all five; the focus strip's position text passes withScope=false because
+// on screen); Category, Domain, Age, Linked from the live state. The count line names
+// all six; the focus strip's position text passes withScope=false because
 // its where-subset already prints the Scope or Source name (selectionText).
 function contentFilterText(withScope) {
   const out = [];
@@ -816,6 +841,7 @@ function contentFilterText(withScope) {
   if (state.cat) out.push("Category " + state.cat);
   if (state.domain) out.push("Domain " + state.domain);
   if (state.age) out.push("Age " + ((AGES.find(a => a[0] === state.age) || [])[1] || state.age));
+  if (state.linked) out.push("Linked " + ((LINKED.find(a => a[0] === state.linked) || [])[1] || state.linked));
   return out.join(" · ");
 }
 function posText() {
