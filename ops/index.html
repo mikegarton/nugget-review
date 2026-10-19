@@ -247,6 +247,11 @@ maintained by hand alongside it (2026-09-11).</div>
 // hold the previous module for up to 10 minutes after a push, so the call
 // waits for a module that has the function.
 if (window.TableViewer && TableViewer.mountTextSize) TableViewer.mountTextSize("#textSize");
+// Header offset (table-viewer spec G, ruling header-offset a, 2026-10-19): the
+// section bar's height, so every table's headers park under it while scrolling.
+{ const bar = document.querySelector(".secbar");
+  const setStickyTop = () => document.documentElement.style.setProperty("--tv-sticky-top", bar.getBoundingClientRect().height + "px");
+  setStickyTop(); if (window.ResizeObserver) new ResizeObserver(setStickyTop).observe(bar); }
 const BASE = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-review";
 // Key from ?key= once, then this device's localStorage (cr_review_key — shared
 // with the viewer and capture surfaces) so the installed N-ops app (RV-031)
@@ -874,6 +879,7 @@ const CODE_CONSTANTS = [
     ["IDENTITY_MIN_PERCENT_PHONE", "30", "table-viewer-v1.js", "The identity column's least share of a table narrower than PHONE_LAYOUT_BELOW_PX (spec E8 rule 3). Rule: the share of a 355 px phone table that leaves room for four median number cells (52 px each at 16 px) beside the identity"],
     ["IDENTITY_MIN_PX", "80", "table-viewer-v1.js", "The identity column's least width (spec E8 rule 3). Rule: the drawn width of a ten-character word at 16 px (83 px), so a channel label's longest word fits unbroken"],
     ["TEXT_NEED_MAX_CHARS", "40", "table-viewer-v1.js", "Characters of a wrap or shrink text value counted toward its column's width (spec E8 rule 2). Rule: one line of a 355 px phone table at 16 px (42 characters), so a text column never claims more than a phone line's worth of width"],
+    ["COLUMN_MAX_PERCENT", "35", "table-viewer-v1.js", "No column, the identity included, claims more than this share of the table's width; a value wider than the ceiling shows as one line ending in an ellipsis that a tap opens (spec E8 rule 2, E10; ruling long-column b). Rule: with the identity's phone minimum of 30 percent, two capped columns still fit beside it on a phone line (30 + 35 + 35)"],
     ["CLIP_CHARS", "22", "table-viewer-v1.js", "Characters of a clip value counted toward its column's width (spec E8 rule 2). Rule: two characters under the clip cell's measured capacity of 24 at its 14 em maximum, so the ellipsis never crowds the last word"],
     ["REDRAW_MIN_WIDTH_CHANGE_PX", "24", "table-viewer-v1.js", "A width change larger than this renders the table again, its fit and count line included (spec E8). Rule: the width of three characters at 16 px (25 px); a smaller change cannot move a column across the fit"],
     ["ARM_SECONDS", "5", "table-viewer-v1.js", "An armed action button disarms after this many seconds (ruling d31 a)"],
