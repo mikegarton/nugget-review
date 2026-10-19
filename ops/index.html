@@ -60,6 +60,14 @@
   .twrap th { color: var(--dim); user-select: none; position: sticky; top: 0; background: var(--card); }
   .twrap tr:last-child td { border-bottom: none; }
   .twrap td { font-variant-numeric: tabular-nums; }
+  /* Limits & burn (rulings limits-wrap a and limits-share a, 2026-10-19): the
+     limiter column takes at most 35 percent of the table's width, the share the
+     table viewer uses as its ceiling (COLUMN_MAX_PERCENT), and its name and
+     description wrap inside it. The other columns keep their no-wrap widths,
+     so below about 1400 px the column yields to them and the table scrolls
+     sideways as before (measured 2026-10-19: 35 percent at 2000 px, 27 at
+     1400, 14 at 1024 and on a 375 px phone). */
+  #limits td:first-child, #limits th:first-child { width: 35%; white-space: normal; }
   .twrap td.acts button { font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; min-height: 34px; cursor: pointer; }
   .twrap td.acts button.armed { border-color: var(--bad); color: var(--bad); }
   .twrap td.acts button.done { border-color: var(--good); color: var(--good); }
