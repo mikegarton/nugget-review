@@ -110,12 +110,16 @@ sheet changes the same words.</div>
 <h2>Feed health — RSS fetch failures</h2>
 <div id="feed"></div>
 <div class="note">One row per UTC day, from the hourly poller's sweep log
-(since 2026-09-28; before that a failed feed left no record). A <b>fetch</b> is
-one channel's feed in one sweep. <b>Failed</b> = still failing after the one
-retry (10 s timeout, 2 s pause, see the parameters section); <b>retry saved</b> =
-failed once, fetched on the retry. A full UTC day holds 24 sweeps, so a day with
+(since 2026-09-28; before that a failed feed left no record). <b>Feeds failed
+all day</b> is the headline: feeds that failed in every sweep of the day, so no
+sweep read them; a feed that fails some hours and is read in others is a delay,
+not a loss (YouTube refused every channel feed between 22:00 and 07:00 UTC
+through 2026-10-19). A <b>fetch</b> is one channel's feed in one sweep.
+<b>Failed</b> = still failing after the one retry (10 s timeout, 2 s pause, no
+retry of a 404, see the parameters section); <b>retry saved</b> = failed once,
+fetched on the retry. A full UTC day holds 24 sweeps, so a day with
 fewer sweeps lost a sweep entirely (the run was killed before it could log);
-today's row is partial. Failed fetches show as yellow. The failing channels and
+today's row is partial. Feeds failed all day shows as yellow. The failing channels and
 their HTTP status are in <b>yt_feed_sweeps.failures</b>.</div>
 </section>
 
@@ -409,11 +413,15 @@ const SPECS = {
       { key: "day", label: "day (UTC)" },
       { key: "sweeps", label: "sweeps", decimals: 0, mark: (v, r) => Number(v) < 24 && String(r.day).slice(0, 10) < new Date().toISOString().slice(0, 10) ? "warn" : null },   // today is partial by nature
       { key: "feed_fetches", label: "fetches", decimals: 0 },
-      { key: "failed_fetches", label: "failed", decimals: 0, mark: (v) => Number(v) > 0 ? "warn" : null },
-      { key: "failed_pct", label: "failed %", decimals: 1, mark: (v) => Number(v) > 0 ? "warn" : null },
+      // Headline (feed-figure a, 2026-10-19): a feed no sweep of the day could
+      // read. The worst sweep stays beside it; it read 26 every day while
+      // YouTube refused every channel feed overnight, which is not a lost feed.
+      { key: "feeds_failed_all_day", label: "feeds failed all day", decimals: 0, mark: (v) => Number(v) > 0 ? "warn" : null },
+      { key: "worst_sweep_failed", label: "worst sweep failed", decimals: 0 },
+      { key: "failed_fetches", label: "failed", decimals: 0 },
+      { key: "failed_pct", label: "failed %", decimals: 1 },
       { key: "retry_saved", label: "retry saved", decimals: 0 },
       { key: "sweeps_with_failure", label: "sweeps with a failure", decimals: 0 },
-      { key: "worst_sweep_failed", label: "worst sweep failed", decimals: 0 },
       { key: "sweeps_retry_stopped", label: "sweeps retry stopped", decimals: 0 },
     ] },
   tags: { name: "tags", site: "ops", identity: "tag", sort: { key: "coverage_pct", dir: "desc" },
