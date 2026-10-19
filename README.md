@@ -240,7 +240,12 @@ sortable source column, and every tunable number live from `yt_params`.
 
 ## Deploying
 
-Push to `main`; GitHub Pages serves the repo root. The API base URL is
+Push to `main`; GitHub Pages serves the repo root. Before a push that
+touches `ops/index.html`, run the page's whole script under stubs (a node
+`vm.runInNewContext` of the script with a stubbed document and window) and
+read how far it gets: a declaration-order fault throws at load and no table
+renders, which a parse check cannot see (2026-10-19, fail event e515; the
+broken page was live about four minutes). The API base URL is
 hardcoded in `view/index.html`, `view/clips.html`, and `ops/index.html`.
 Phone note: an N-add installed before 2026-08-23 keeps the old whole-site
 scope until it is uninstalled and reinstalled from `capture/`; until then
