@@ -51,8 +51,9 @@
   .p-yellow { color: var(--gold); }   .p-yellow i { background: var(--gold); }
   .p-orange { color: var(--orange); } .p-orange i { background: var(--orange); }
   .p-red { color: var(--bad); }       .p-red i { background: var(--bad); }
-  /* .twrap stays for the three sections that keep their old rendering
-     (Limits, parameters, constants — outside ruling d3 a). */
+  /* .twrap stays for the two sections that keep their old rendering
+     (parameters, constants — outside ruling d3 a; Limits & burn became an
+     instance on ruling limits-viewer a, 2026-10-19). */
   .twrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
   .twrap table { border-collapse: collapse; width: 100%; font-size: 13px; white-space: nowrap; }
   .twrap th, .twrap td { text-align: right; padding: 7px 9px; border-bottom: 1px solid var(--line); }
@@ -60,14 +61,6 @@
   .twrap th { color: var(--dim); user-select: none; position: sticky; top: 0; background: var(--card); }
   .twrap tr:last-child td { border-bottom: none; }
   .twrap td { font-variant-numeric: tabular-nums; }
-  /* Limits & burn (rulings limits-wrap a and limits-share a, 2026-10-19): the
-     limiter column takes at most 35 percent of the table's width, the share the
-     table viewer uses as its ceiling (COLUMN_MAX_PERCENT), and its name and
-     description wrap inside it. The other columns keep their no-wrap widths,
-     so below about 1400 px the column yields to them and the table scrolls
-     sideways as before (measured 2026-10-19: 35 percent at 2000 px, 27 at
-     1400, 14 at 1024 and on a 375 px phone). */
-  #limits td:first-child, #limits th:first-child { width: 35%; white-space: normal; }
   .twrap td.acts button { font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; min-height: 34px; cursor: pointer; }
   .twrap td.acts button.armed { border-color: var(--bad); color: var(--bad); }
   .twrap td.acts button.done { border-color: var(--good); color: var(--good); }
@@ -109,7 +102,7 @@ stamp; its waiting videos are not processed while it is stopped. <b>start
 campaign</b> sets it to active and restarts exactly the phrases that stamp
 stopped (viewer headers show a stopped phrase as Stopped). The campaign
 sheet changes the same words.</div>
-<div class="twrap"><table id="limits"><tr><td class="empty">Loading…</td></tr></table></div>
+<div id="limits"></div>
 <div id="killed" class="cards" style="margin-top:8px"></div>
 <div id="sheetSync" class="note" style="margin-top:8px"></div>
 </section>
@@ -374,6 +367,37 @@ const CHANNEL_ACTIONS = [
 ];
 
 const SPECS = {
+  // Limits & burn (ruling limits-viewer a, 2026-10-19, reversing d3 for this
+  // table): page order through the hidden order column; used and quota sort
+  // as numbers and show their unit texts; the projection and the bar are
+  // render hooks; the campaign button is an action on the row's own status
+  // (sheet spec draft 6, 2026-10-06), shown only where the campaign has phrases.
+  limits: { name: "limits", site: "ops", identity: "limiter", sort: { key: "order", dir: "asc" },
+    columns: [
+      { key: "limiter", label: "limiter" },
+      { key: "description", label: "description", kind: "text" },
+      { key: "type", label: "type", kind: "enum" },
+      { key: "used", label: "used", decimals: 0, render: (v, r) => esc(r.used_text) },
+      { key: "quota", label: "quota", decimals: 0, render: (v, r) => esc(r.quota_text) },
+      { key: "unit", label: "unit", kind: "enum" },
+      { key: "pace", label: "projected at reset", decimals: 0, render: limitProjected },
+      { key: "share", label: "bar", decimals: 0, render: limitBar },
+      { key: "resets", label: "resets", kind: "text" },
+      { key: "order", label: "page order", decimals: 0, visible: false },
+      { key: "used_text", visible: false },
+      { key: "quota_text", visible: false },
+      { key: "proj_text", visible: false },
+      { key: "no_projection", visible: false },
+      { key: "elapsed_pct", label: "period elapsed %", decimals: 0, visible: false },
+      { key: "campaign_id", visible: false },
+      { key: "status", label: "campaign status", visible: false },
+      { key: "phrases_total", label: "phrases", decimals: 0, visible: false },
+    ],
+    actions: [
+      { label: "stop campaign", when: (r) => r.campaign_id != null && r.phrases_total > 0 && r.status === "active", route: "/pause-campaign-searches", payload: ["campaign_id"], guard: "none", done: "stopped" },
+      { label: "start campaign", when: (r) => r.campaign_id != null && r.phrases_total > 0 && r.status !== "active", route: "/resume-campaign-searches", payload: ["campaign_id"], guard: "none", done: "active" },
+    ],
+    request: apiRequest, afterAction },
   totals: { name: "channel-lifetime", site: "ops", identity: "label", sort: { key: "nug_per_usd", dir: "desc" },
     columns: TOTAL_COLS, actions: CHANNEL_ACTIONS, request: apiRequest, afterAction },
   monthly: { name: "channel-monthly", site: "ops", identity: "label", sort: { key: "nug_per_usd", dir: "desc" },
@@ -507,26 +531,34 @@ function paceLabel(r) {
     r < 1.0 ? "near limit" : "over pace";
 }
 
+// Limits & burn as a viewer instance (ruling limits-viewer a, 2026-10-19,
+// reversing d3 for this table): one view row per limiter, in page order
+// through the hidden order column. A row with no defensible growth basis
+// (noProjection) is paced by the share of quota used now, with the same five
+// bands; it has no tick and no projected value.
 function limitRow(l, i) {
-  // A row with no defensible growth basis (l.noProjection) is colored by the
-  // share of quota used now, with the same five bands; it has no tick and no
-  // projected value.
   const r = l.noProjection ? (l.quota > 0 ? l.used / l.quota : null) : paceOf(l.used, l.quota, l.elapsed);
-  const pct = Math.min(100, 100 * l.used / Math.max(l.quota, 1e-9));
-  const proj = r == null ? '<span class="dim">no quota</span>' :
-    l.noProjection ? '<span class="' + paceClass(r) + '">' + Math.round(r * 100) + "% used now — " + (l.projText || "no projection") + "</span>" :
-    '<span class="' + paceClass(r) + '">' + Math.round(r * 100) + "% — " + paceLabel(r) + "</span>";
-  return "<tr><td>" + esc(l.name) +
-    (l.sub ? '<br><span class="dim">' + esc(l.sub) + "</span>" : "") + "</td>" +
-    '<td style="color:var(--dim)">' + esc(l.type) + "</td>" +
-    "<td>" + esc(l.usedText) + "</td><td>" + esc(l.quotaText) + "</td>" +
-    "<td>" + proj + "</td>" +
-    '<td><div class="bar ' + paceClass(r) + '" style="display:inline-block;vertical-align:middle">' +
-      '<i style="width:' + pct + '%"></i>' +
-      (l.noProjection ? "" : '<span class="tick" style="left:' + Math.min(100, 100 * l.elapsed) + '%"></span>') + "</div></td>" +
-    '<td style="color:var(--dim)">' + esc(l.resets) + "</td>" +
-    '<td class="acts" data-i="' + i + '"></td></tr>';
+  return {
+    limiter: l.name, description: l.sub || "", type: l.type,
+    used: l.used, quota: l.quota, unit: l.unit,
+    used_text: l.usedText, quota_text: l.quotaText,
+    pace: r == null ? null : Math.round(r * 100),
+    share: Math.min(100, 100 * l.used / Math.max(l.quota, 1e-9)),
+    proj_text: l.noProjection ? (l.projText || "no projection") : (r == null ? "" : paceLabel(r)),
+    no_projection: !!l.noProjection, elapsed_pct: Math.min(100, 100 * (l.elapsed || 0)),
+    resets: l.resets, order: i + 1,
+    campaign_id: l.campaign ? l.campaign.id : null,
+    status: l.campaign ? l.campaign.status : "",
+    phrases_total: l.phrases ? l.phrases.total : 0,
+  };
 }
+// The projection cell: the pace in its band's colour, then the pace word or,
+// for a row with no projection, the share used now and its runway text.
+const limitProjected = (v, r) => v == null ? '<span class="dim">no quota</span>' :
+  '<span class="' + paceClass(v / 100) + '">' + v + (r.no_projection ? "% used now — " : "% — ") + esc(r.proj_text) + "</span>";
+// The bar cell: share of quota used, the tick where "exactly on pace" would be now.
+const limitBar = (v, r) => '<div class="bar ' + paceClass(r.pace == null ? null : r.pace / 100) + '" style="display:inline-block;vertical-align:middle;max-width:100%">' +
+  '<i style="width:' + v + '%"></i>' + (r.no_projection ? "" : '<span class="tick" style="left:' + r.elapsed_pct + '%"></span>') + "</div>";
 
 function render() {
   const m = ops.month;
@@ -541,7 +573,7 @@ function render() {
     cycFrac = Math.min(1, Math.max(0, (now - cs) / Math.max(1, ce - cs)));
     const cycReset = String(m.supadata_cycle_end).slice(0, 10);
     rows.push({
-      name: "Transcript pulls — whole pipeline", type: "expires",
+      name: "Transcript pulls — whole pipeline", type: "expires", unit: "credits",
       sub: "Supadata credits, $" + fmt(m.supadata_fee, 0) + "/cycle flat — unused credits expire",
       used: m.cycle_supadata_calls, usedText: String(m.cycle_supadata_calls),
       quota: m.supadata_allotment, quotaText: String(m.supadata_allotment),
@@ -550,7 +582,7 @@ function render() {
     if (m.daily_cap != null) {
       const dayFrac = (now % 86400000) / 86400000;
       rows.push({
-        name: "Transcript pulls — today's cap", type: "ceiling",
+        name: "Transcript pulls — today's cap", type: "ceiling", unit: "credits",
         sub: "burn multiplier × credits remaining ÷ days remaining, recomputed live — at the cap, YouTube pauses until tomorrow; substack keeps flowing",
         used: Number(m.credits_used_today) || 0, usedText: String(m.credits_used_today),
         quota: Number(m.daily_cap) || 1, quotaText: String(m.daily_cap),
@@ -560,7 +592,7 @@ function render() {
     const campUsed = budgets.reduce((s, b) => s + (b.supadata_used_cycle || 0), 0);
     const campCap = budgets.reduce((s, b) => s + (b.supadata_cap_per_cycle || 0), 0);
     rows.push({
-      name: "Transcript pulls — subscribed channels", type: "expires",
+      name: "Transcript pulls — subscribed channels", type: "expires", unit: "credits",
       sub: "the credits left for subscribed channels after campaign reservations",
       used: m.cycle_supadata_calls - campUsed,
       usedText: String(m.cycle_supadata_calls - campUsed),
@@ -574,7 +606,7 @@ function render() {
       new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate());
     const claudeUsd = m.mtd_claude_usd ?? m.mtd_cost_usd;
     rows.push({
-      name: "AI reading & scoring — whole pipeline", type: "metered",
+      name: "AI reading & scoring — whole pipeline", type: "metered", unit: "$",
       sub: "Claude API dollars this month vs the soft budget (✎ in parameters) — nothing blocks at the cap",
       used: Number(claudeUsd) || 0, usedText: "$" + fmt(claudeUsd, 2),
       quota: budgetUsd, quotaText: "$" + budgetUsd,
@@ -584,7 +616,7 @@ function render() {
     if (tm) {
       const ttsCap = Number(pmap.get("tts_max_usd_month")) || 5;
       rows.push({
-        name: "Voice renders — TTS cards", type: "ceiling",
+        name: "Voice renders — TTS cards", type: "ceiling", unit: "$",
         sub: "OpenAI TTS dollars this month vs the governor (✎ in parameters) — yt-tts stops rendering at the cap · " +
           (tm.mtd_renders || 0) + " renders this month",
         used: Number(tm.mtd_tts_usd) || 0, usedText: "$" + fmt(tm.mtd_tts_usd, 2),
@@ -597,7 +629,7 @@ function render() {
   if (sz && sz.quota_mb > 0) {
     const top = (sz.top_tables || []).map(t => t.table.replace(/^public\./, "") + " " + fmt(t.mb, 0) + " MB").join(" · ");
     rows.push({
-      name: "Database size — Supabase Free", type: "ceiling",
+      name: "Database size — Supabase Free", type: "ceiling", unit: "MB",
       sub: "pg_database_size vs the plan cap (✎ supabase_db_quota_mb in parameters) — shared by yt-nugget, Open Brain and kardia · " +
         "largest tables: " + top + " · runway = a straight-line trend over the last db_size_trend_days daily snapshots (yt_db_size_daily), so a one-off burst reads as growth until it leaves the window",
       used: Number(sz.db_mb) || 0, usedText: fmt(sz.db_mb, 0) + " MB",
@@ -621,7 +653,7 @@ function render() {
   budgets.forEach(b => {
     const p = phrases.get(b.name) || { total: 0, searching: 0 };
     rows.push({
-      name: 'Transcript pulls — campaign "' + b.name + '"', type: "ceiling",
+      name: 'Transcript pulls — campaign "' + b.name + '"', type: "ceiling", unit: "credits",
       sub: b.status + " · tier " + b.tier + " · " + b.videos_pending + " pending · " +
         b.videos_processed + " processed · " + p.searching + " of " + p.total + " phrases searching · searches every " + (searchEvery ?? "?") + " days — its slice of the cycle credits above",
       used: b.supadata_used_cycle, usedText: String(b.supadata_used_cycle),
@@ -630,22 +662,7 @@ function render() {
       campaign: b, phrases: p,
     });
   });
-  const limits = document.getElementById("limits");
-  limits.innerHTML = rows.length
-    ? "<tr><th>limiter</th><th>type</th><th>used</th><th>quota</th>" +
-      "<th>projected at reset</th><th></th><th>resets</th><th></th></tr>" +
-      rows.map(limitRow).join("")
-    : '<tr><td class="empty">No data.</td></tr>';
-  limits.querySelectorAll("td.acts").forEach((td) => {
-    const l = rows[Number(td.dataset.i)];
-    if (!l || !l.campaign || l.phrases.total === 0) return;
-    // The campaign's own status decides the button (sheet spec draft 6,
-    // 2026-10-06); the routes keep their 2026-09-22 paths.
-    const action = l.campaign.status === "active"
-      ? { label: "stop campaign", route: "/pause-campaign-searches", body: { campaign_id: l.campaign.id }, guard: "none", done: "stopped" }
-      : { label: "start campaign", route: "/resume-campaign-searches", body: { campaign_id: l.campaign.id }, guard: "none", done: "active" };
-    td.appendChild(TableViewer.actionButton(action, l.campaign, { request: apiRequest, afterAction }));
-  });
+  mountOrUpdate("limits", rows.map(limitRow));
 
   document.getElementById("killed").innerHTML = ops.killed_runs_7d != null
     ? '<div class="bcard ' + (ops.killed_runs_7d > 0 ? "p-red" : "p-green") +

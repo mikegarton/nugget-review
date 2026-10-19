@@ -31,8 +31,8 @@ bookmarks and an old N-add's share action keep working.
   phone in the pocket, audio on earbuds. Same key as the viewer.
 - `ops/index.html` — a section page since 2026-09-22: a pinned Section
   dropdown, with the A− A+ text-size pair at the bar's right end (sizes
-  the whole page, remembered per device), shows one section at a time (Limits & burn with pause/resume
-  searches per campaign, campaign yield, sources, category tags, channel
+  the whole page, remembered per device), shows one section at a time (Limits & burn, a table-viewer instance
+  since 2026-10-19, with pause/resume searches per campaign, campaign yield, sources, category tags, channel
   economics lifetime and by month, sift time (sittings, and time by source
   and campaign phrase, worked out from the tap log; since 2026-09-30),
   parameters, code constants). Under the Limits table one line says when
