@@ -553,12 +553,17 @@ function limitRow(l, i) {
   };
 }
 // The projection cell: the pace in its band's colour, then the pace word or,
-// for a row with no projection, the share used now and its runway text.
-const limitProjected = (v, r) => v == null ? '<span class="dim">no quota</span>' :
-  '<span class="' + paceClass(v / 100) + '">' + v + (r.no_projection ? "% used now — " : "% — ") + esc(r.proj_text) + "</span>";
+// for a row with no projection, the share used now and its runway text. Both
+// hooks are function declarations so that SPECS, written above, can name them.
+function limitProjected(v, r) {
+  return v == null ? '<span class="dim">no quota</span>' :
+    '<span class="' + paceClass(v / 100) + '">' + v + (r.no_projection ? "% used now — " : "% — ") + esc(r.proj_text) + "</span>";
+}
 // The bar cell: share of quota used, the tick where "exactly on pace" would be now.
-const limitBar = (v, r) => '<div class="bar ' + paceClass(r.pace == null ? null : r.pace / 100) + '" style="display:inline-block;vertical-align:middle;max-width:100%">' +
-  '<i style="width:' + v + '%"></i>' + (r.no_projection ? "" : '<span class="tick" style="left:' + r.elapsed_pct + '%"></span>') + "</div>";
+function limitBar(v, r) {
+  return '<div class="bar ' + paceClass(r.pace == null ? null : r.pace / 100) + '" style="display:inline-block;vertical-align:middle;max-width:100%">' +
+    '<i style="width:' + v + '%"></i>' + (r.no_projection ? "" : '<span class="tick" style="left:' + r.elapsed_pct + '%"></span>') + "</div>";
+}
 
 function render() {
   const m = ops.month;
