@@ -436,6 +436,9 @@ const SPECS = {
       { key: "acquisition", label: "acquisition" },
       { key: "platform", label: "platform" },
       { key: "state", label: "state" },
+      // The source's measured start, its first item's discovery day from the
+      // view (source-start-date a, 2026-10-22); blank while it has none.
+      { key: "first_item_at", label: "first item", render: (v) => v ? esc(String(v).slice(0, 10)) : "" },
       { key: "priority", label: "priority", decimals: 0 },
       { key: "nug_per_usd", label: "nug/$", decimals: 0 },
       { key: "nug_per_item", label: "nug/item", decimals: 2 },
