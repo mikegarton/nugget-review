@@ -76,8 +76,10 @@
 <h1>Nugget ops</h1>
 <div class="sub">Limits, channel economics, campaign yields, sources, tags, and knobs. Pick a section
 below; every table has filters, bounds, sort, a column chooser and an action cell (table-viewer v1).
+Save view keeps a table's filters, bounds, sort, columns and group under a name on this device; the View
+dropdown brings that table back with them; delete view removes the chosen one.
 Marked knobs are editable here with the ops write key; everything else is SQL-editor only.</div>
-<div class="secbar"><label for="secSel">Section</label><select id="secSel"></select><span id="textSize"></span></div>
+<div class="secbar"><label for="secSel">Section</label><select id="secSel"></select><span id="views"></span><span id="textSize"></span></div>
 
 <section data-sec="limits">
 <h2>Limits &amp; burn</h2>
@@ -295,6 +297,12 @@ function showSection(k) {
 }
 secSel.onchange = () => showSection(secSel.value);
 showSection((() => { try { return localStorage.getItem(SEC_STORE) || "limits"; } catch (e) { return "limits"; } })());
+// Saved views (table-viewer spec E15, rulings of 2026-10-22): the View dropdown,
+// save view and delete view after the section selector; a view names its table
+// and the section it sits in (each spec's section below), so choosing one
+// switches the section and restores that table's settings. Guarded like the
+// text-size call: a device can hold the previous module for up to 10 minutes.
+if (window.TableViewer && TableViewer.mountViewsTblVwr) TableViewer.mountViewsTblVwr("#views", { site: "ops", showSectionTblVwr: showSection });
 
 // ---- requests for the action cells (spec E12, E13, I) ----
 function getOpsKey() {
@@ -372,7 +380,7 @@ const SPECS = {
   // as numbers and show their unit texts; the projection and the bar are
   // render hooks; the campaign button is an action on the row's own status
   // (sheet spec draft 6, 2026-10-06), shown only where the campaign has phrases.
-  limits: { name: "limits", site: "ops", identity: "limiter", sort: { key: "order", dir: "asc" },
+  limits: { name: "limits", site: "ops", section: "limits", identity: "limiter", sort: { key: "order", dir: "asc" },
     columns: [
       { key: "limiter", label: "limiter" },
       { key: "description", label: "description", kind: "text" },
@@ -398,11 +406,11 @@ const SPECS = {
       { label: "start campaign", when: (r) => r.campaign_id != null && r.phrases_total > 0 && r.status !== "active", route: "/resume-campaign-searches", payload: ["campaign_id"], guard: "none", done: "active" },
     ],
     request: apiRequest, afterAction },
-  totals: { name: "channel-lifetime", site: "ops", identity: "label", sort: { key: "nug_per_usd", dir: "desc" },
+  totals: { name: "channel-lifetime", site: "ops", section: "totals", identity: "label", sort: { key: "nug_per_usd", dir: "desc" },
     columns: TOTAL_COLS, actions: CHANNEL_ACTIONS, request: apiRequest, afterAction },
-  monthly: { name: "channel-monthly", site: "ops", identity: "label", sort: { key: "nug_per_usd", dir: "desc" },
+  monthly: { name: "channel-monthly", site: "ops", section: "monthly", identity: "label", sort: { key: "nug_per_usd", dir: "desc" },
     columns: MONTH_COLS, request: apiRequest, afterAction },
-  yield: { name: "campaign-yield", site: "ops", identity: "query", sort: { key: "nug_per_item", dir: "desc" },
+  yield: { name: "campaign-yield", site: "ops", section: "yield", identity: "query", sort: { key: "nug_per_item", dir: "desc" },
     columns: [
       { key: "query", label: "query" },
       { key: "campaign", label: "campaign", visible: false },
@@ -422,7 +430,7 @@ const SPECS = {
       { key: "query_id", visible: false },
       { key: "active", visible: false },
     ] },
-  sources: { name: "sources", site: "ops", identity: "key", sort: { key: "priority", dir: "asc" },
+  sources: { name: "sources", site: "ops", section: "sources", identity: "key", sort: { key: "priority", dir: "asc" },
     columns: [
       { key: "key", label: "source", render: (v, r) => '<span class="swatch" style="background:' + esc(r.color || "#888") + '"></span>' + esc(v) + (r.enabled ? "" : ' <span class="hot">(off)</span>') },
       { key: "acquisition", label: "acquisition" },
@@ -445,7 +453,7 @@ const SPECS = {
         input: { column: "priority", key: "value" }, guard: "none", done: "saved" },
     ],
     request: apiRequest, afterAction },
-  feed: { name: "feed-health", site: "ops", identity: "day", sort: { key: "day", dir: "desc" },
+  feed: { name: "feed-health", site: "ops", section: "feed", identity: "day", sort: { key: "day", dir: "desc" },
     columns: [
       { key: "day", label: "day (UTC)" },
       { key: "sweeps", label: "sweeps", decimals: 0, mark: (v, r) => Number(v) < 24 && String(r.day).slice(0, 10) < new Date().toISOString().slice(0, 10) ? "warn" : null },   // today is partial by nature
@@ -461,7 +469,7 @@ const SPECS = {
       { key: "sweeps_with_failure", label: "sweeps with a failure", decimals: 0 },
       { key: "sweeps_retry_stopped", label: "sweeps retry stopped", decimals: 0 },
     ] },
-  tags: { name: "tags", site: "ops", identity: "tag", sort: { key: "coverage_pct", dir: "desc" },
+  tags: { name: "tags", site: "ops", section: "tags", identity: "tag", sort: { key: "coverage_pct", dir: "desc" },
     columns: [
       { key: "tag", label: "tag" },
       { key: "ttl_days", label: "TTL (days)", decimals: 0 },
@@ -472,7 +480,7 @@ const SPECS = {
     ] },
   // Sift time (tap log, 2026-09-30): both tables read views worked out from
   // yt_viewer_events. Column order = the tap-log spec's section 6.
-  siftSittings: { name: "sift-sittings", site: "ops", identity: "sitting", sort: { key: "sitting", dir: "desc" },
+  siftSittings: { name: "sift-sittings", site: "ops", section: "sift", identity: "sitting", sort: { key: "sitting", dir: "desc" },
     columns: [
       { key: "sitting", label: "sitting started (UTC)" },
       { key: "sift_minutes", label: "minutes sifted", decimals: 1 },
@@ -488,7 +496,7 @@ const SPECS = {
       { key: "device_id", visible: false },
       { key: "sitting_started_at", visible: false },
     ] },
-  siftSources: { name: "sift-by-source", site: "ops", identity: "ident", sort: { key: "sift_minutes", dir: "desc" },
+  siftSources: { name: "sift-by-source", site: "ops", section: "sift", identity: "ident", sort: { key: "sift_minutes", dir: "desc" },
     columns: [
       { key: "ident", label: "source or phrase" },
       { key: "row_kind", label: "kind" },

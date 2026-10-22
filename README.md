@@ -30,7 +30,11 @@ bookmarks and an old N-add's share action keep working.
   nuggets as clips back-to-back in an embedded YouTube player — one tap,
   phone in the pocket, audio on earbuds. Same key as the viewer.
 - `ops/index.html` — a section page since 2026-09-22: a pinned Section
-  dropdown, with the A− A+ text-size pair at the bar's right end (sizes
+  dropdown, then since 2026-10-22 the saved-view widgets (View, save view,
+  delete view: a table's filters, bounds, sort, columns and group kept
+  under a name on this device and brought back, with its section, from
+  anywhere on the page; table-viewer spec E15), with the A− A+ text-size
+  pair at the bar's right end (sizes
   the whole page, remembered per device), shows one section at a time (Limits & burn, a table-viewer instance
   since 2026-10-19, with pause/resume searches per campaign, campaign yield, sources, category tags, channel
   economics lifetime and by month, sift time (sittings, and time by source
