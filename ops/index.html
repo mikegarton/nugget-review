@@ -105,6 +105,7 @@ campaign</b> sets it to active and restarts exactly the phrases that stamp
 stopped (viewer headers show a stopped phrase as Stopped). The campaign
 sheet changes the same words.</div>
 <div id="limits"></div>
+<div id="queueToday" class="note" style="margin-top:8px" hidden></div>
 <div id="killed" class="cards" style="margin-top:8px"></div>
 <div id="sheetSync" class="note" style="margin-top:8px"></div>
 </section>
@@ -185,7 +186,10 @@ since word counting began (2026-07-30), on both sides of the ratio. Channels
 processed before 2026-07-25 predate cost logging and show $0 (per-dollar rates
 blank). The ratios are computed in the database views since 2026-09-22.
 Subscribe appears on YouTube channels that are not subscribed; the two unsub
-buttons on subscribed channels: nuggets stops the feed, YouTube unsubscribes the account.</div>
+buttons on subscribed channels: nuggets stops the feed, YouTube unsubscribes the account.
+<b>cap/wk</b> and <b>priority</b> are the channel's weekly cap and processing priority
+(✎ = editable here with the ops write key; empty clears); <b>pending</b> and <b>stale</b>
+are its waiting items and the items expired unprocessed.</div>
 </section>
 
 <section data-sec="monthly">
@@ -332,6 +336,12 @@ const afterAction = () => load();
 // ---- column specs (spec B; labels and decimals are the 2026-08-01 doctrine's) ----
 const sourceRender = (v) => v === "substack"
   ? '<span style="color:var(--accent)">substack</span>' : esc(v || "");
+// A channel lever cell (weekly_cap, proc_priority): the stored value, then a
+// pencil; a click opens editChannelParam, the channel twin of editLever.
+const channelLever = (leverKey) => (v, r) =>
+  '<span class="editable" style="color:var(--accent);cursor:pointer" title="click to edit (ops write key); empty clears" ' +
+  "onclick=\"editChannelParam('" + esc(r.channel_id) + "','" + leverKey + "','" + esc(v ?? "") + "')\">" +
+  (v == null ? "" : esc(v) + " ") + "✎</span>";
 const TOTAL_COLS = [
   { key: "label", label: "channel", render: (v, r) => esc(v) + (r.enabled === false ? ' <span class="hot">(not subscribed)</span>' : "") },
   { key: "source", label: "source", render: sourceRender },
@@ -358,11 +368,19 @@ const TOTAL_COLS = [
   { key: "nuggets_per_transcript_minute", label: "nug/min", decimals: 3 },
   { key: "channel_id", visible: false },
   { key: "enabled", visible: false },
+  // Subscription throttle (spec draft 1, section 11): the two levers are edited
+  // here (click, type, enter; empty clears), the two counts are read-only.
+  // Zero is shown as 0; a blank lever shows only its pencil.
+  { key: "weekly_cap", label: "cap/wk", decimals: 0, render: channelLever("weekly_cap") },
+  { key: "proc_priority", label: "priority", decimals: 0, render: channelLever("proc_priority") },
+  { key: "pending_now", label: "pending", decimals: 0 },
+  { key: "stale_total", label: "stale", decimals: 0 },
   { key: "kwords", visible: false, label: "kwords", decimals: 2 },
   { key: "first_processed_at", visible: false, label: "first processed" },
 ];
 const MONTH_HIDE = new Set(["nug_per_month", "taste_peak", "taste_med", "taste_avg",
-  "mentor_peak", "mentor_med", "mentor_avg", "hype_med", "hype_avg", "first_processed_at"]);
+  "mentor_peak", "mentor_med", "mentor_avg", "hype_med", "hype_avg", "first_processed_at",
+  "weekly_cap", "proc_priority", "pending_now", "stale_total"]);
 const MONTH_COLS = [{ key: "label", label: "channel" }, { key: "month", label: "month" }]
   .concat(TOTAL_COLS.filter((c) => c.key !== "label" && !MONTH_HIDE.has(c.key)));
 
@@ -680,6 +698,14 @@ function render() {
   });
   mountOrUpdate("limits", rows.map(limitRow));
 
+  // Queue today (subscription throttle spec, section 11): items the processor
+  // stored as skipped_stale or archived_unprocessed today; hidden while the
+  // API does not send the field.
+  const qt = ops.queue_counts_today;
+  const qtEl = document.getElementById("queueToday");
+  qtEl.hidden = !qt;
+  qtEl.innerHTML = qt ? "<b>Queue today:</b> " + esc(qt.stale ?? 0) + " stale, " + esc(qt.archived ?? 0) + " archived." : "";
+
   document.getElementById("killed").innerHTML = ops.killed_runs_7d != null
     ? '<div class="bcard ' + (ops.killed_runs_7d > 0 ? "p-red" : "p-green") +
       '"><b>Processor runs killed — 7 days</b>' +
@@ -964,6 +990,24 @@ async function editLever(table, key, current) {
       alert("Rejected: " + (data.error || res.status));
       return;
     }
+    load();
+  } catch (e) { alert("Network error: " + e); }
+}
+
+// Channel lever writes (subscription throttle spec, section 11): the cap and the
+// priority of one channel through POST /channel-param, with the same ops write
+// key as /param. An empty entry sends the word clear; Cancel does nothing.
+async function editChannelParam(channelId, key, current) {
+  const next = prompt("New value for " + key + " of this channel (current: " + (current === "" ? "blank" : current) +
+    "). A whole number from 1; leave empty to clear.", current);
+  if (next == null) return;
+  const value = String(next).trim() === "" ? "clear" : String(next).trim();
+  if (value === "clear" ? current === "" : value === String(current)) return;
+  try {
+    const res = await apiRequest({ route: "/channel-param", opsKey: true }, null, { channel_id: channelId, key, value });
+    if (res.status === 0) return;                                     // no ops write key entered
+    let data = null; try { data = await res.json(); } catch (e) {}
+    if (!res.ok) { alert("Rejected: " + ((data && data.error) || res.status)); return; }
     load();
   } catch (e) { alert("Network error: " + e); }
 }
