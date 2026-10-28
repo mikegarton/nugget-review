@@ -539,9 +539,14 @@ const SPECS = {
     ] },
 };
 
-function mountOrUpdate(id, rows) {
-  if (mounts[id]) mounts[id].update(rows);
-  else mounts[id] = mountTable("#" + id, rows, SPECS[id]);
+// meta.sourceCount: the rows the table's source holds, from /ops table_counts,
+// so the count line shows a read that came back short (ruling read-paging b,
+// 2026-10-28); absent while the API does not send it.
+function mountOrUpdate(id, rows, countKey) {
+  const n = countKey && ops.table_counts ? ops.table_counts[countKey] : null;
+  const meta = Number.isFinite(n) ? { sourceCount: n } : undefined;
+  if (mounts[id]) mounts[id].update(rows, meta);
+  else mounts[id] = mountTable("#" + id, rows, SPECS[id], meta);
 }
 
 // ---- pace bands (unchanged from 2026-08-01) ----
@@ -729,13 +734,15 @@ function render() {
   // The five template instances (ruling d3 a). Row transforms: month as
   // YYYY-MM so it filters as an enum; a query's active flag as a status word;
   // a source's enabled flag as a state word; sources merged with their economics.
-  mountOrUpdate("yield", (ops.campaign_yield || []).map(r => Object.assign({}, r, { status: r.active ? "searching" : "stopped" })));
+  // The phrase's own status from yt_campaign_queries (column-reach b) keeps its
+  // name as query_status; status stays the page's searching or stopped word.
+  mountOrUpdate("yield", (ops.campaign_yield || []).map(r => Object.assign({}, r, "status" in r ? { query_status: r.status } : {}, { status: r.active ? "searching" : "stopped" })), "campaign_yield");
   const econ = new Map((ops.source_econ || []).map(s => [s.key, s]));
-  mountOrUpdate("sources", (ops.sources || []).map(s => Object.assign({}, econ.get(s.key) || {}, s, { state: s.enabled ? "on" : "off" })));
+  mountOrUpdate("sources", (ops.sources || []).map(s => Object.assign({}, econ.get(s.key) || {}, s, { state: s.enabled ? "on" : "off" })), "sources");
   mountOrUpdate("feed", ops.feed_failures_daily || []);
-  mountOrUpdate("tags", ops.tag_coverage || []);
-  mountOrUpdate("totals", ops.channel_totals || []);
-  mountOrUpdate("monthly", (ops.channel_monthly || []).map(r => Object.assign({}, r, { month: String(r.month).slice(0, 7) })));
+  mountOrUpdate("tags", ops.tag_coverage || [], "tag_coverage");
+  mountOrUpdate("totals", ops.channel_totals || [], "channel_totals");
+  mountOrUpdate("monthly", (ops.channel_monthly || []).map(r => Object.assign({}, r, { month: String(r.month).slice(0, 7) })), "channel_monthly");
   // Sift time. A sitting's identity is its start time to the second; a phrase
   // row's identity carries its campaign, since two campaigns can hold one phrase.
   mountOrUpdate("siftSittings", (ops.sift_sittings || []).map(r => Object.assign({}, r, {
@@ -744,7 +751,7 @@ function render() {
   })));
   mountOrUpdate("siftSources", (ops.sift_by_source || []).map(r => Object.assign({}, r, {
     ident: r.row_kind === "campaign phrase" ? "“" + r.label + "” · " + (r.campaign || "?") : r.label,
-  })));
+  })), "sift_by_source");
   renderKnobs();
 }
 
@@ -940,7 +947,14 @@ const CODE_CONSTANTS = [
     ["DEFAULT_MAX", "570", "yt-backfill", "Videos listed when ?max= is omitted (about a year of Nate B Jones)"],
   ]},
   { group: "table-viewer v1 (ops page tables)", rows: [
-    ["ENUM_MAX_DISTINCT", "12", "table-viewer-v1.js", "A column is a filterable enum when its distinct values are at most this many AND at most half the rows (rulings d8 a, d18 b)"],
+    ["GROUPS_GOOD_MIN", "5", "table-viewer-v1.js", "A grouping with at least this many groups, and at most GROUPS_GOOD_MAX, is listed first in Group and Then group (ruling group-viability a, 2026-10-27). Rule: Mike's useful range, 5 to 20 groups. A column is a filter when its values repeat, distinct values at most half the rows (ruling d18 b); the cap of 12 (ENUM_MAX_DISTINCT, d8 a) is retired"],
+    ["GROUPS_GOOD_MAX", "20", "table-viewer-v1.js", "The top of the useful range of groups, and the most groups a letter, band or period grouping aims at (ruling group-viability a)"],
+    ["ROWS_PER_GROUP_MIN", "2", "table-viewer-v1.js", "A grouping averaging fewer rows a group than this is one row per group, listed under less useful (ruling group-viability a)"],
+    ["FINER_FACTOR", "10", "table-viewer-v1.js", "The finer Group entry aims at this many times the groups, groups an order of magnitude smaller (ruling range-buckets a)"],
+    ["FINER_ABOVE_ROWS", "100", "table-viewer-v1.js", "Above this many rows shown, a letter, band or period grouping also offers its finer entry (ruling range-buckets a, Mike's n > 100)"],
+    ["ZERO_BAND_MIN_SHARE", "0.1", "table-viewer-v1.js", "Zero is a band of its own when it holds this share of a number column's values (ruling range-buckets a)"],
+    ["FOLD_CLOSED_ABOVE_ROWS", "100", "table-viewer-v1.js", "A grouping chosen over a table of more rows than this opens with every group folded (ruling group-fold-default b)"],
+    ["FILTER_FIND_ABOVE", "20", "table-viewer-v1.js", "A filter dropdown with more entries than this carries a find box that narrows them as you type (ruling group-viability a)"],
     ["IDENTITY_OWN_LINE_ABOVE_PERCENT", "50", "table-viewer-v1.js", "Where identities sit beside their cells, an identity whose drawn width passes this share of the table's width takes its own line and its cells stay under their headers (spec E9 case 2). Rule: 24 typical characters draw 178 px at 16 px (measured 2026-09-28), half of a 355 px phone table. Replaces IDENTITY_OWN_LINE_MIN_CHARS (24)"],
     ["PHONE_LAYOUT_BELOW_PX", "600", "table-viewer-v1.js", "A table narrower than this gets the identity minimum below and, when its chosen columns do not all fit, every identity on its own line (spec E9 case 1). Rule: Android's compact window width class ends at 600 dp"],
     ["IDENTITY_MIN_PERCENT_PHONE", "30", "table-viewer-v1.js", "The identity column's least share of a table narrower than PHONE_LAYOUT_BELOW_PX (spec E8 rule 3). Rule: the share of a 355 px phone table that leaves room for four median number cells (52 px each at 16 px) beside the identity"],
