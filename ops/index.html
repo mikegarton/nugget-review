@@ -121,7 +121,11 @@ not a loss (YouTube refused every channel feed between 22:00 and 07:00 UTC
 through 2026-10-19). A <b>fetch</b> is one channel's feed in one sweep.
 <b>Failed</b> = still failing after the one retry (10 s timeout, 2 s pause, no
 retry of a 404, see the parameters section); <b>retry saved</b> = failed once,
-fetched on the retry. A full UTC day holds 24 sweeps, so a day with
+fetched on the retry. <b>Rescued by API</b> = a YouTube feed that
+answered 404 and was read instead from the channel's uploads playlist through
+the YouTube API, one quota unit each (since 2026-10-25); it is not counted as
+failed. YouTube still refuses most channel feeds from about 00:00 to 07:00 UTC,
+so a full day shows about 150 to 170 of these. A full UTC day holds 24 sweeps, so a day with
 fewer sweeps lost a sweep entirely (the run was killed before it could log);
 today's row is partial. Feeds failed all day shows as yellow. The failing channels and
 their HTTP status are in <b>yt_feed_sweeps.failures</b>.</div>
@@ -487,6 +491,10 @@ const SPECS = {
       { key: "failed_fetches", label: "failed", decimals: 0 },
       { key: "failed_pct", label: "failed %", decimals: 1 },
       { key: "retry_saved", label: "retry saved", decimals: 0 },
+      // A YouTube feed that answered 404 and was read through the channel's
+      // uploads playlist instead (yt-poller since 2026-10-25); not a failure
+      // (ruling feed-fallback-record a, 2026-10-28).
+      { key: "api_fallbacks", label: "rescued by API", decimals: 0 },
       { key: "sweeps_with_failure", label: "sweeps with a failure", decimals: 0 },
       { key: "sweeps_retry_stopped", label: "sweeps retry stopped", decimals: 0 },
     ] },
