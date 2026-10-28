@@ -1039,15 +1039,23 @@ async function load() {
     document.body.innerHTML = '<div class="empty">Missing ?key= — open from your bookmark (same key as the viewer).</div>';
     return;
   }
+  // A server error is tried once more (ruling ops-heavy-views a, 2026-10-28):
+  // on a cold start the heavy views can pass the database's time limit once;
+  // a second failure shows its status and the API's own error text.
   let res;
-  try {
-    res = await fetch(BASE + "/ops?key=" + encodeURIComponent(KEY));
-  } catch (e) {
-    document.getElementById("limits").innerHTML = '<tr><td class="empty">Could not reach the API.</td></tr>';
-    return;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      res = await fetch(BASE + "/ops?key=" + encodeURIComponent(KEY));
+    } catch (e) {
+      document.getElementById("limits").innerHTML = '<tr><td class="empty">Could not reach the API.</td></tr>';
+      return;
+    }
+    if (res.status < 500) break;
   }
   if (!res.ok) {
-    document.getElementById("limits").innerHTML = '<tr><td class="empty">API error ' + res.status + "</td></tr>";
+    let why = "";
+    try { why = (await res.json()).error || ""; } catch (e) {}
+    document.getElementById("limits").innerHTML = '<tr><td class="empty">API error ' + res.status + (why ? ": " + esc(why) : "") + "</td></tr>";
     return;
   }
   ops = await res.json();
