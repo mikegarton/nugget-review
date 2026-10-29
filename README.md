@@ -188,7 +188,10 @@ zone; frequency orders the rest; utilities last.
   for campaign nuggets `campaign: <name>` + `q: “<search phrase>”`), `A<n>`
   appeal and `C<n>` coach scores, `coach ±N` in Broccoli sort, `viz <n>`
   when needs_viz ≥ 50, ★n, the Q badge.
-  Expanded: the abstract, rationale, Watch link, stars. Watch links open
+  Expanded: the abstract, rationale, Watch link, a second **K** (the
+  keeper button again where the reading ends; it and the card-line K show
+  and change together), stars. An opened card is scrolled so its top sits
+  just under the sticky controls (2026-10-28). Watch links open
   at the nugget's start, clamped so a link never lands past `duration −
   30 s` (spec §7: the processor clamps at write time, the viewer clamps for
   display).
