@@ -233,7 +233,9 @@ header when the render wrote it, <b>est.</b> from the character count at 15
 characters a second for the files rendered before that. <b>Created</b> = the first
 piece's date; <b>cost</b> in dollars; <b>queued by</b> = the Audio list or the
 built playlist that asked for the item; <b>played</b> = an entry for it was played.
-<b>play</b> starts the item alone; <b>play in table order</b> plays the rows the
+Each row is one item in one voice, shown in <b>voice</b> (vendor.model.voice); an
+item rendered in two voices has two rows. <b>play</b> starts the row alone, in its
+own voice; <b>play in table order</b> plays the rows the
 table shows now, after filter, sort and group, one after another. The player bar
 at the foot of the page stays across sections: pause, next, stop. An item with no
 audio files is skipped and named in the bar. <b>delete</b> (armed, with the ops
@@ -592,7 +594,7 @@ const SPECS = {
       { key: "queued_by", label: "queued by", kind: "enum" },
       { key: "played", label: "played", kind: "bool", render: (v) => v ? "yes" : "" },
       { key: "unit_id", visible: false },
-      { key: "voice", label: "voice", visible: false },
+      { key: "voice", label: "voice", kind: "enum" },
     ],
     actions: [
       { label: "play", guard: "none", done: "▶" },
@@ -693,13 +695,20 @@ function plPaint(text) {
   plEl.pause.textContent = player.paused ? "resume" : "pause";
   plEl.skip.textContent = player.skipped.length ? "Skipped, no audio files: " + player.skipped.join("; ") : "";
 }
-function plWhere(part) { const u = player.queue[player.i]; return (player.i + 1) + " of " + player.queue.length + (part ? " · " + part : "") + " · " + u.unit_type + " · " + u.name; }
+function plWhere(part) { const u = player.queue[player.i]; return (player.i + 1) + " of " + player.queue.length + (part ? " · " + part : "") + " · " + u.unit_type + " · " + u.name + (u.voiceText ? " · " + u.voiceText : ""); }
+// A row's voice text "vendor.model.voice" as the /tts-urls voice object: the
+// vendor up to the first dot, the voice after the last, the model between
+// (a model name may hold dots). Null when the text does not have that shape.
+function voiceObj(text) {
+  const t = String(text || ""), a = t.indexOf("."), z = t.lastIndexOf(".");
+  if (a < 1 || z <= a || z === t.length - 1) return null;
+  return { vendor: t.slice(0, a), model: t.slice(a + 1, z), voice: t.slice(z + 1) };
+}
+// Each row is one (unit, voice) file set and plays on its own voice (ruling
+// d30 a, 2026-10-29): two rows of one unit are two entries, none is dropped.
 function playUnits(rows) {
-  const seen = new Set(), queue = [];
-  for (const r of rows) {                                            // one unit may hold several voices: play it once
-    const k = r.unit_type + ":" + r.unit_id;
-    if (!seen.has(k)) { seen.add(k); queue.push({ unit_type: r.unit_type, unit_id: r.unit_id, name: r.name || r.unit_id }); }
-  }
+  const queue = rows.map(r => ({ unit_type: r.unit_type, unit_id: r.unit_id, name: r.name || r.unit_id,
+    voice: voiceObj(r.voice), voiceText: r.voice || "" }));
   if (!queue.length) return;
   player.queue = queue; player.skipped = []; player.paused = false; player.on = true;
   plEl.bar.hidden = false; document.body.classList.add("playing");
@@ -722,14 +731,14 @@ async function plStart(i) {
   try {
     const res = await fetch(BASE + "/tts-urls?key=" + encodeURIComponent(KEY), {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ units: [{ unit_type: u.unit_type, unit_id: u.unit_id }] }),
+      body: JSON.stringify(Object.assign({ units: [{ unit_type: u.unit_type, unit_id: u.unit_id }] }, u.voice ? { voice: u.voice } : {})),
     });
     const data = await res.json();
     unit = res.ok && data.units && data.units[0];
   } catch (e) {}
   if (gen !== player.gen) return;
   const chunks = ((unit && unit.chunks) || []).slice().sort((a, b) => a.seq - b.seq);
-  if (!chunks.length) { player.skipped.push(u.name); plStart(i + 1); return; }
+  if (!chunks.length) { player.skipped.push(u.name + (u.voiceText ? " (" + u.voiceText + ")" : "")); plStart(i + 1); return; }
   player.chunks = chunks;
   plChunk(gen);
 }
@@ -909,7 +918,7 @@ function render() {
     const p = phrases.get(b.name) || { total: 0, searching: 0 };
     rows.push({
       name: 'Transcript pulls — campaign "' + b.name + '"', type: "ceiling", unit: "credits",
-      sub: b.status + " · tier " + b.tier + " · " + b.videos_pending + " pending · " +
+      sub: b.status + (b.priority_effective ? " · priority " + b.priority_effective : "") + " · " + b.videos_pending + " pending · " +
         b.videos_processed + " processed · " + p.searching + " of " + p.total + " phrases searching · searches every " + (searchEvery ?? "?") + " days — its slice of the cycle credits above",
       used: b.supadata_used_cycle, usedText: String(b.supadata_used_cycle),
       quota: b.supadata_cap_per_cycle, quotaText: String(b.supadata_cap_per_cycle),

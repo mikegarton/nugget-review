@@ -43,14 +43,19 @@ bookmarks and an old N-add's share action keep working.
   the last campaign sheet sync arrived (since 2026-10-01), and a campaign row's
   button stops or starts the campaign (draft, active, stopped at both levels since
   2026-10-06). Audio files (since 2026-10-29) is one row per card, post or
-  transcript with rendered voice audio (kind, name, files, MB, length measured
-  or estimated, created, cost, queued by, played): play starts a row,
-  delete (armed, ops write key) removes its files, render rows, unplayed
-  playlist entries and A mark, play in table order plays the rows as the table
-  shows them (the table-viewer handle's `shownRowsTblVwr()`), and a player bar
-  fixed to the foot of every section offers pause, next and stop, asking
-  `/tts-urls` for each item as it starts and naming an item with no files
-  as skipped. A channel is subscribed, not subscribed or blocked: its label
+  transcript in one voice with rendered audio (kind, name, files, MB, length
+  measured or estimated, created, cost, queued by, played, voice; an item
+  rendered in two voices has two rows): play starts a row, delete (armed, ops
+  write key) removes the item's files in every voice, render rows, unplayed
+  playlist entries and A mark, play in table order plays every row as the table
+  shows them (the table-viewer handle's `shownRowsTblVwr()`), each in its own
+  voice (the row's `vendor.model.voice` sent as `/tts-urls`' `voice`), and a
+  player bar fixed to the foot of every section offers pause, next and stop,
+  asking `/tts-urls` for each row as it starts and naming a row with no files
+  as skipped. A campaign's row in Limits shows its resolved priority
+  ("priority 2", from `priority_effective`, the view
+  `yt_campaign_priority_effective`: item override, campaign, channel, source,
+  then 3; a blank level is normal) in place of the campaign-level tier column. A channel is subscribed, not subscribed or blocked: its label
   carries the word, and block and unblock (armed, ops write key,
   `/channel-state`) sit beside subscribe and the unsub pair. Campaign yield
   shows the phrase's and the campaign's status words as the database holds
@@ -252,13 +257,25 @@ The Audio list and built playlists play what the player bar's **Play**
 pulldown says (card, full or both; saved per device, default card): the
 card's synthesized audio, the item's synthesized audio when it has
 finished, else its own audio (a video through the chosen route, a post's
-audio file in the viewer's own player); an entry with nothing to play is
-skipped and named. The builder row's **Item source** pulldown (synth,
+audio file in the viewer's own player, or the first embedded YouTube video
+of a post through the same route when it has no audio file). A video played
+as its own audio plays whole, from 0:00 to its end, not the nugget's clip
+(the in-page route has no end bound; the YouTube app opens at t=0s); the
+Video list still plays clips. An entry with
+nothing to play is skipped and named. The builder row's **Item source** pulldown (synth,
 pref-native, only-native; saved per device, default only-native) and one
 commit button replace the three commit buttons; an A tap and a commit send
 both choices, and the server makes only what the pair calls for (the
 matrix of `working_docs\unapproved-draft-backup-dump\tts-audio-ops-plan-2026-10-29.md`,
-part 2). The "visible items" route keeps the phone's own voice for text.
+part 2). The visible items follow the same Play pulldown in Audio mode, over
+the units already rendered (card: the card's audio; full: the item's synthesized
+audio, else its own audio, else skipped by name; both: the card then the item;
+a post is voiced once for its listed nuggets); the phone's own voice no longer
+reads text there or anywhere in Audio mode, and Read mode is unchanged. A
+rendered entry whose render is still in flight is waited for while it advances
+(a poll every 5 s; the bar reads "rendering audio… N of M ready"; playing starts
+with the first chunk and runs on through those finished since) and is skipped
+and named once the finished or pending count has not changed for 3 minutes.
 
 The header strip of the viewer shows pipeline status when quiet (month-to-
 date cost, Supadata usage, drift verdict) and turns into an alarm line when

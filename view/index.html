@@ -1052,17 +1052,20 @@ function renderPlayerBar(v) {
   // renderers compare the current item by identity — fresh copies each render
   // would fail that check and kill playback mid-fetch. The Play pulldown
   // decides the entries at play time.
-  PL.items = (mode === "audio" && PL.playlistSel)
-    ? plExpanded(PL.playlistSel)
+  // The visible items follow the same Play pulldown (ruling d27 a, 2026-10-29):
+  // in Audio mode they expand to entries too, cached for the same reason.
+  PL.items = mode === "audio"
+    ? (PL.playlistSel ? plExpanded(PL.playlistSel) : visibleExpanded(v))
     : v.filter(n => !(state.group === "video") || true); // order = visible order
   const cur = PL.items[PL.idx];
+  const curLive = cur && (byId.get(cur.id) || cur); // an entry is a copy; the K state is the item's
   const mediaCtl = mode === "audio"
     ? '<select id="pRoute" title="video items on the Audio list: in-page clip (screen on) or the YouTube app (Premium, locked screen, whole-video fallback)">' +
       '<option value="page"' + (state.ytRoute === "page" ? " selected" : "") + '>video → in-page clip</option>' +
       '<option value="app"' + (state.ytRoute === "app" ? " selected" : "") + '>video → YouTube app</option></select>' +
       '<select id="pList" title="play a playlist instead of the visible items"><option value="">visible items</option>' +
         (playlists || []).map(p => '<option value="' + p.id + '"' + (PL.playlistSel === p.id ? " selected" : "") + ">" + esc(p.kind === "system" ? "Audio list (system)" : p.name) + "</option>").join("") + "</select>" +
-      '<select id="pPlay" title="what a playlist plays: the card, the full item (its synthesized audio, else its own audio), or the card then the item. Also what an A tap or a commit makes. Playlists only, not the visible items.">' +
+      '<select id="pPlay" title="what a playlist plays: the card, the full item (its synthesized audio, else its own audio), or the card then the item. Also what an A tap or a commit makes. Playlists and the visible items alike.">' +
         TTS_PLAYS.map(x => '<option value="' + x + '"' + (ttsPlay() === x ? " selected" : "") + ">play: " + x + "</option>").join("") + "</select>" +
       '<select id="pVoice" title="voice for text items"></select>' +
       '<select id="pRate" title="speed"><option value="0.85">0.85×</option><option value="1">1×</option><option value="1.15">1.15×</option><option value="1.3">1.3×</option><option value="1.5">1.5×</option></select>'
@@ -1073,7 +1076,7 @@ function renderPlayerBar(v) {
     '<button id="pPrev" title="previous">&#9664;</button>' +
     '<button id="pNext" title="next">&#9654;&#9654;</button>' +
     (mode === "read" ? '<button id="pDone" title="mark read (stamps played)">&#10003; Done</button>' : '<button id="pPause" title="pause / resume">&#10074;&#10074;</button>') +
-    '<button id="pKeep" class="' + (cur && cur.keeperAt ? "" : "") + '" title="Keeper: I expect to use this idea near or mid-term">K ' + (cur && cur.keeperAt ? "&#10003;" : "keeper") + "</button>" +
+    '<button id="pKeep" class="' + (curLive && curLive.keeperAt ? "" : "") + '" title="Keeper: I expect to use this idea near or mid-term">K ' + (curLive && curLive.keeperAt ? "&#10003;" : "keeper") + "</button>" +
     (mode !== "read" ? '<button id="pLock" title="pocket guard: swallow touches until a long-press">&#128274;</button>' : "") +
     mediaCtl +
     '<span class="pnow">' + (PL.items.length + " items in " + mode + " mode · order = current sort") +
@@ -1099,7 +1102,7 @@ function renderPlayerBar(v) {
     document.getElementById("pList").onchange = (e) => { PL.playlistSel = e.target.value || null; playerStop(); render(); };
     document.getElementById("pPlay").onchange = (e) => {
       try { localStorage.setItem("tts_play", e.target.value); } catch (err) {}
-      PL.plCache = null; playerStop(); render(); // the entries follow Play: expand again
+      PL.plCache = null; PL.visCache = null; playerStop(); render(); // the entries follow Play: expand again
     };
     const vs = document.getElementById("pVoice");
     const fill = () => { if (!synth) { vs.innerHTML = '<option value="">no speech</option>'; return; }
@@ -1115,7 +1118,7 @@ function renderPlayerBar(v) {
 
 function playerStart() { if (!PL.items.length) return; PL.active = true; requestWake(); playerGo(PL.idx >= 0 ? PL.idx : 0); }
 function playerStop(msg) {
-  PL.active = false; PL.idx = -1;
+  PL.active = false; PL.idx = -1; PL.visCache = null; // the next start expands over what is rendered by then
   stopRenderers();
   document.getElementById("pane").className = ""; document.getElementById("pane").innerHTML = "";
   document.getElementById("lock").className = "";
@@ -1133,6 +1136,16 @@ function stopRenderers() {
   if (PL.yt && PL.ytReady) { try { PL.yt.stopVideo(); } catch (e) {} }
   if (synth) { PL.tts.utter = null; synth.cancel(); }
 }
+// Names a skipped entry in the pane, then moves on in the direction we came.
+// Used for an entry the expansion found nothing for and for one whose render
+// never came (playRenderedUnit): the phone's own voice is never the fallback.
+function skipEntry(n, why, dir) {
+  const pane = document.getElementById("pane");
+  pane.className = "on";
+  pane.innerHTML = '<div class="ptext"><b>skipped</b> — ' + esc(n.headline || "") + " · " + esc(why) + "</div>";
+  render();
+  setTimeout(() => { if (PL.active && PL.items[PL.idx] === n) playerGo(PL.idx + (dir || 1)); }, 1200);
+}
 function playerGo(i) {
   if (!PL.active) { PL.active = true; requestWake(); }
   if (i < 0) i = 0;
@@ -1144,12 +1157,7 @@ function playerGo(i) {
   const pane = document.getElementById("pane");
   pane.className = "on";
   // An entry with nothing to play under the Play choice: name it, then move on.
-  if (n._skip) {
-    pane.innerHTML = '<div class="ptext"><b>skipped</b> — ' + esc(n.headline || "") + " · " + esc(n._skip) + "</div>";
-    render();
-    setTimeout(() => { if (PL.active && PL.items[PL.idx] === n) playerGo(PL.idx + dir); }, 1200);
-    return;
-  }
+  if (n._skip) { skipEntry(n, n._skip, dir); return; }
   // Text items render their whole POST, so finishing one covers every
   // listed sibling nugget of that post: mark them all played and skip to
   // the next distinct post (2026-08-23 — four nuggets of one NBJ post
@@ -1157,8 +1165,12 @@ function playerGo(i) {
   const done = () => {
     // Playlist card half of a both pair: no stamp yet, the item follows.
     if (n._noStamp) { if (PL.active) playerGo(PL.idx + 1); return; }
-    const grouping = isPostSource(n) && !PL.playlistSel;
-    const group = grouping ? PL.items.filter(x => x.video_id === n.video_id) : [n];
+    // Audio mode plays entries: a post's one item entry stamps the visible
+    // nuggets it stands for (_siblings); the card/item entries are copies, so
+    // the stamp goes on the item itself. Video mode keeps its own grouping.
+    const grouping = isPostSource(n) && PL.mode !== "audio";
+    const group = (grouping ? PL.items.filter(x => x.video_id === n.video_id)
+      : n._siblings ? n._siblings.map(id => byId.get(id)) : [n]).map(x => byId.get(x && x.id) || x);
     Promise.all(group.map(markPlayed)).then(() => { if (PL.active) render(); });
     if (PL.active) {
       let j = PL.idx + 1;
@@ -1211,7 +1223,7 @@ async function renderAudio(n, pane, done) {
   // this is a playlist entry, whose render may still be in flight — the player
   // polls and falls back gracefully).
   const unit = n._ttsUnit || { unit_type: isPostSource(n) ? "post" : "transcript", unit_id: n.video_id };
-  if (!n._skipTts && (n._ttsUnit || ttsRendered.has(unit.unit_type + ":" + unit.unit_id))) {
+  if (n._ttsUnit || ttsRendered.has(unit.unit_type + ":" + unit.unit_id)) {
     playRenderedUnit(n, unit, pane, done);
     return;
   }
@@ -1266,7 +1278,15 @@ async function renderAudio(n, pane, done) {
 // <audio>, a video through the chosen route.
 function playNativeAudio(n, pane, done) {
   const m = n.media || {};
-  if (!isPostSource(n)) { playYouTubeAudio(n, pane, done); return; }
+  // Ruling d37 a (2026-10-29): the item's OWN video audio plays whole, from 0:00 to
+  // the video's end, not the nugget clip (the last argument).
+  if (!isPostSource(n)) { playYouTubeAudio(n, pane, done, undefined, true); return; }
+  // A post's attached audio file first; else the first embedded YouTube video
+  // through the chosen route (ruling d30 a, 2026-10-29), stamped on the post.
+  if (!m.audio_url && m.video_ids && m.video_ids.length) {
+    playYouTubeAudio({ ...n, video_id: m.video_ids[0], start_seconds: 0, durationSeconds: null }, pane, done, n, true);
+    return;
+  }
   const a = audioEl();
   pane.innerHTML = '<div class="ptext" style="color:var(--dim)">attached audio</div>';
   pane.appendChild(a);
@@ -1274,16 +1294,18 @@ function playNativeAudio(n, pane, done) {
   a.onerror = () => { pane.insertAdjacentHTML("beforeend", '<div class="empty">audio failed to load — skipping</div>'); setTimeout(() => PL.active && done(), 1200); };
   setMediaSession(n); a.play().catch(() => {});
 }
-// YouTube video: its audio via the chosen route.
-function playYouTubeAudio(n, pane, done) {
+// YouTube video: its audio via the chosen route. whole (native full entries,
+// ruling d37 a): from 0:00 with no end bound; the app opens at t=0s. Otherwise
+// the nugget clip.
+function playYouTubeAudio(n, pane, done, stampTarget, whole) {
   if (state.ytRoute === "app") {
     const list = (facets && facets.audio_playlist_id) || "";
-    const url = "https://www.youtube.com/watch?v=" + n.video_id + "&t=" + (displayStart(n) || 0) + "s" + (list ? "&list=" + encodeURIComponent(list) : "");
-    pane.innerHTML = '<div class="ptext">Opening in the YouTube app at ' + fmtT(displayStart(n) || 0) + ' — Premium keeps it playing under lock; the playlist continues with whole videos. <a href="' + url + '" style="color:var(--accent)">tap if it did not open</a></div>';
+    const url = "https://www.youtube.com/watch?v=" + n.video_id + "&t=" + (whole ? 0 : (displayStart(n) || 0)) + "s" + (list ? "&list=" + encodeURIComponent(list) : "");
+    pane.innerHTML = '<div class="ptext">Opening in the YouTube app at ' + fmtT(whole ? 0 : (displayStart(n) || 0)) + ' — Premium keeps it playing under lock; the playlist continues with whole videos. <a href="' + url + '" style="color:var(--accent)">tap if it did not open</a></div>';
     window.open(url, "_blank");
     return; // no signal back from the app: no played stamp, no auto-advance
   }
-  renderYouTubeClip(n, pane, done);
+  renderYouTubeClip(n, pane, done, stampTarget, whole);
 }
 function speakable(text) {
   return String(text || "")
@@ -1344,12 +1366,15 @@ async function renderVideo(n, pane, done) {
 }
 
 // ---- YouTube clip (in-page) ------------------------------------------------
-function renderYouTubeClip(n, pane, done, stampTarget) {
+// whole: play from 0:00 to the video's ENDED event, no end bound (d37 a).
+function renderYouTubeClip(n, pane, done, stampTarget, whole) {
   pane.innerHTML = '<div class="pbox"><div id="ytp"></div></div>';
-  const start = displayStart(n) || 0;
-  const end = clipEnd(n, start);
+  const start = whole ? 0 : (displayStart(n) || 0);
+  const end = whole ? null : clipEnd(n, start);
   const go = () => {
-    PL.yt.loadVideoById({ videoId: n.video_id, startSeconds: start, endSeconds: end });
+    const args = { videoId: n.video_id, startSeconds: start };
+    if (end != null) args.endSeconds = end;
+    PL.yt.loadVideoById(args);
     PL.ytOnEnd = done; PL.ytStamp = stampTarget || n;
   };
   if (PL.yt && PL.ytReady) {
@@ -1395,70 +1420,85 @@ let playlists = [];          // yt_playlists rows, each with .items
 let builderN = 5;            // builder counter (§9d: +1 button, fast-forward +5)
 
 // Play a unit's rendered chunk files through our own <audio>: gapless-ish via
-// next-chunk preload (§9f); polls while a fresh commit is still rendering,
-// then falls back to the tier-1 paths (Web Speech / enclosure / YouTube).
-async function playRenderedUnit(n, unit, pane, done, attempt) {
+// next-chunk preload (§9f). A render still in flight is waited for (ruling d30 a,
+// 2026-10-29): /tts-urls is polled every 5 s for as long as the render is
+// advancing, that is while pending chunks remain and the count of finished or of
+// pending chunks changed within the last 3 minutes; the bar reads "rendering
+// audio… N of M ready". Playing starts as soon as chunk 0 exists and runs on
+// through the chunks finished since. Nothing playable after the wait skips the
+// entry by name: the phone's own voice is never the fallback. A finished render
+// is added to ttsRendered so later expansions know it without a reload.
+const RENDER_POLL_MS = 5000, RENDER_STALL_MS = 3 * 60 * 1000;
+async function playRenderedUnit(n, unit, pane, done) {
+  const key = unit.unit_type + ":" + unit.unit_id;
+  const live = () => PL.active && PL.items[PL.idx] === n;
+  const paint = (t) => { const el = document.getElementById("ttsPane"); if (el) el.textContent = t; };
+  // ready = the finished chunks from seq 0 with no gap; finished counts every finished chunk
+  const st = { ready: [], finished: 0, pending: 0, voice: null, sig: "", since: Date.now() };
   pane.innerHTML = '<div class="ptext" id="ttsPane" style="color:var(--dim)">fetching rendered audio…</div>';
-  let res = null;
-  try {
-    res = await (await fetch(BASE + "/tts-urls?key=" + encodeURIComponent(KEY), {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ units: [unit] }),
-    })).json();
-  } catch (e) {}
-  if (!PL.active || PL.items[PL.idx] !== n) return;
-  const u = res && res.units && res.units[0];
-  const chunks = (u && u.chunks) || [];
-  if (!chunks.length) {
-    if (u && u.pending > 0 && (attempt || 0) < 24) { // ~2 min of 5 s polls
-      const el = document.getElementById("ttsPane");
-      if (el) el.textContent = "rendering audio… (" + u.pending + " chunk" + (u.pending > 1 ? "s" : "") + " in flight)";
-      setTimeout(() => { if (PL.active && PL.items[PL.idx] === n) playRenderedUnit(n, unit, pane, done, (attempt || 0) + 1); }, 5000);
-      return;
+  async function refresh() {
+    let u = null;
+    try {
+      const res = await (await fetch(BASE + "/tts-urls?key=" + encodeURIComponent(KEY), {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ units: [unit] }),
+      })).json();
+      u = res && res.units && res.units[0];
+    } catch (e) {}
+    if (!live()) return false;
+    if (u) {
+      const sorted = (u.chunks || []).slice().sort((x, y) => x.seq - y.seq), ready = [];
+      for (const c of sorted) { if (c.seq === ready.length) ready.push(c); else break; }
+      st.ready = ready; st.finished = sorted.length; st.pending = u.pending || 0; st.voice = u.voice || st.voice;
+      const sig = st.finished + "/" + st.pending;
+      if (sig !== st.sig) { st.sig = sig; st.since = Date.now(); }
+      if (st.finished > 0 && st.pending === 0) ttsRendered.add(key);
     }
-    ttsRendered.delete(unit.unit_type + ":" + unit.unit_id);
-    if (unit.unit_type === "card") { speakCard(n, pane, done); return; }
-    n._skipTts = true;
-    renderAudio(n, pane, done);
+    return true;
+  }
+  // Resolves true when the chunk at pos can play, false when none will come
+  // (the render is over or has stalled), null when the entry is no longer current.
+  async function waitFor(pos) {
+    for (;;) {
+      if (!(await refresh())) return null;
+      if (st.ready.length > pos) return true;
+      if (st.pending <= 0 || Date.now() - st.since >= RENDER_STALL_MS) return false;
+      paint("rendering audio… " + st.finished + " of " + (st.finished + st.pending) + " ready");
+      await new Promise((r) => setTimeout(r, RENDER_POLL_MS));
+      if (!live()) return null;
+    }
+  }
+  const first = await waitFor(0);
+  if (first === null) return;
+  if (!first) {
+    if (st.pending === 0 && st.finished === 0) ttsRendered.delete(key); // the set claimed a render that has no files
+    skipEntry(n, st.pending > 0 ? "render did not finish" : "no audio files", 1);
     return;
   }
   const a = audioEl();
   pane.innerHTML = '<div class="ptext" id="ttsPane" style="color:var(--dim)"></div>';
   pane.appendChild(a);
   let pos = 0;
-  const playPos = () => {
-    if (!PL.active || PL.items[PL.idx] !== n) return;
-    if (pos >= chunks.length) { done(); return; }
-    a.src = chunks[pos].url;
+  const playPos = async () => {
+    if (!live()) return;
+    if (pos >= st.ready.length) {                     // past the last known chunk: more may have finished since
+      const more = st.pending > 0 ? await waitFor(pos) : false;
+      if (more === null) return;
+      if (!more) { done(); return; }
+    }
+    const c = st.ready[pos];
+    a.src = c.url;
     a.playbackRate = Number(localStorage.getItem("tts_rate") || "1") || 1;
-    const el = document.getElementById("ttsPane");
-    if (el) el.textContent = "rendered audio — part " + (pos + 1) + "/" + chunks.length + (u.voice ? " · voice " + u.voice.voice : "");
-    if (pos + 1 < chunks.length) { const pre = new Audio(); pre.preload = "auto"; pre.src = chunks[pos + 1].url; }
+    const total = st.finished + st.pending;
+    paint("rendered audio — part " + (pos + 1) + "/" + total + (st.pending > 0 ? " (rendering, " + st.finished + " ready)" : "") + (st.voice ? " · voice " + st.voice.voice : ""));
+    if (pos + 1 < st.ready.length) { const pre = new Audio(); pre.preload = "auto"; pre.src = st.ready[pos + 1].url; }
+    else if (st.pending > 0) refresh();               // learn of the next chunk while this one plays
     a.onended = () => { pos++; playPos(); };
     a.onerror = () => { pos++; playPos(); };
     a.play().catch(() => {});
   };
   setMediaSession(n);
   playPos();
-}
-
-// Tier-1 fallback for a card unit: voice the card from /bodies via Web Speech.
-async function speakCard(n, pane, done) {
-  pane.innerHTML = '<div class="ptext" id="ttsPane" style="color:var(--dim)">loading card…</div>';
-  let b = null;
-  try {
-    const r = await (await fetch(BASE + "/bodies?key=" + encodeURIComponent(KEY), {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ids: [n.id] }),
-    })).json();
-    b = r && r.bodies && r.bodies[n.id];
-  } catch (e) {}
-  if (!PL.active || PL.items[PL.idx] !== n) return;
-  const chunks = [n.headline || "", "From: " + (n.plainTitle || n.videoTitle || "")]
-    .concat(speakable(b && b.content))
-    .concat(b && b.rationale ? ["Coach's note: " + b.rationale] : [])
-    .filter(Boolean);
-  speakChunks(n, chunks, done);
 }
 
 // Cached expansion — same entry objects across renders (identity-stable).
@@ -1469,8 +1509,9 @@ function plExpanded(id) {
   return PL.plCache.items;
 }
 // Native audio, as the server decides it (plan part 2): a YouTube video always
-// has some; any other item has some when its attachments record holds an audio_url.
-function hasNativeAudio(n) { return !isPostSource(n) || !!(n.media && n.media.audio_url); }
+// has some; any other item has some when its attachments record holds an
+// audio_url or an embedded video (video_ids, played through the YouTube route).
+function hasNativeAudio(n) { return !isPostSource(n) || linkedContent(n) !== null; }
 // The two choices a playlist item was added with. Items from a server that
 // still sends the old mode map as the migration does (card -> card + only_native;
 // full -> full + synth; card_full -> both + synth).
@@ -1480,6 +1521,47 @@ function itemChoice(it) {
   if (it.mode === "card_full") return { play: "both", item_source: "synth" };
   return { play: "card", item_source: "only_native" };
 }
+// The matrix for one item under the Play choice, over what exists (plan part 2):
+//   card → the card's synthesized audio
+//   full → the item's synthesized audio when it exists, else its own audio
+//   both → the card, then the item
+// Entries are copies of the item (_ttsUnit: a rendered unit to play; _native:
+// the item's own audio); either is null where nothing plays.
+function matrixEntries(n, play, cardMade, fullMade) {
+  const fullUnit = { unit_type: isPostSource(n) ? "post" : "transcript", unit_id: n.video_id };
+  const cardE = play !== "full" && cardMade ? { ...n, _ttsUnit: { unit_type: "card", unit_id: n.id } } : null;
+  const itemE = play === "card" ? null
+    : fullMade ? { ...n, _ttsUnit: fullUnit }
+    : hasNativeAudio(n) ? { ...n, _native: true } : null;
+  return { cardE, itemE };
+}
+const skipWhy = (play) => play === "card" ? "no card audio" : play === "full" ? "no full audio" : "no card or full audio";
+// The visible items in Audio mode, expanded by the same matrix over the units
+// known to be rendered (ruling d27 a, 2026-10-29): no phone-voice reading. A
+// post is voiced once for its listed nuggets (its first item entry stands for
+// all of them; _siblings), as before. Cached while the visible ids and Play are
+// unchanged and frozen while playing, so the entries keep their identity.
+function visibleExpanded(v) {
+  const play = ttsPlay(), sig = play + ":" + v.map(n => n.id).join(",");
+  if (PL.visCache && (PL.active || PL.visCache.sig === sig)) return PL.visCache.items;
+  const out = [], posts = new Set();
+  for (const n of v) {
+    const fullKey = (isPostSource(n) ? "post:" : "transcript:") + n.video_id;
+    const { cardE, itemE } = matrixEntries(n, play, ttsRendered.has("card:" + n.id), ttsRendered.has(fullKey));
+    let item = itemE;
+    if (item && isPostSource(n)) {
+      if (posts.has(n.video_id)) item = null; // this post's item entry is already in the list
+      else { posts.add(n.video_id); item._siblings = v.filter(x => x.video_id === n.video_id).map(x => x.id); }
+    }
+    if (cardE && item) cardE._noStamp = true;
+    if (cardE) out.push(cardE);
+    if (item) out.push(item);
+    if (!cardE && !itemE) out.push({ ...n, _skip: skipWhy(play) });
+  }
+  PL.visCache = { sig, items: out };
+  return out;
+}
+
 // A playlist expands to play entries (§9a/§9c) that follow the Play pulldown AT
 // PLAY TIME, over whatever files exist (plan part 2, the matrix):
 //   card → the card's rendered audio
@@ -1500,19 +1582,15 @@ function expandPlaylist(id) {
     if (!n) continue; // outside the loaded set (v1 limit: load a scope covering it)
     const ch = itemChoice(it);
     const fullUnit = { unit_type: isPostSource(n) ? "post" : "transcript", unit_id: n.video_id };
-    const cardUnit = { unit_type: "card", unit_id: n.id };
     const cardMade = ttsRendered.has("card:" + n.id) || ch.play === "card" || ch.play === "both";
     const fullMade = ttsRendered.has(fullUnit.unit_type + ":" + fullUnit.unit_id) ||
       ((ch.play === "full" || ch.play === "both") &&
         (ch.item_source === "synth" || (ch.item_source === "pref_native" && !hasNativeAudio(n))));
-    const cardE = play !== "full" && cardMade ? { ...n, _ttsUnit: cardUnit } : null;
-    const itemE = play === "card" ? null
-      : fullMade ? { ...n, _ttsUnit: fullUnit }
-      : hasNativeAudio(n) ? { ...n, _native: true } : null;
+    const { cardE, itemE } = matrixEntries(n, play, cardMade, fullMade);
     if (cardE && itemE) cardE._noStamp = true; // the item follows and stamps
     if (cardE) out.push(cardE);
     if (itemE) out.push(itemE);
-    if (!cardE && !itemE) out.push({ ...n, _skip: play === "card" ? "no card audio" : play === "full" ? "no full audio" : "no card or full audio" });
+    if (!cardE && !itemE) out.push({ ...n, _skip: skipWhy(play) });
   }
   return out;
 }
@@ -2367,7 +2445,7 @@ async function loadData() {
   if (data.tts) ttsInfo = data.tts;
   ttsRendered = new Set(data.tts_rendered || []);
   playlists = data.playlists || [];
-  PL.plCache = null; // the cached expansion reads both
+  PL.plCache = null; PL.visCache = null; // the cached expansions read both
   if (facets) facets.audio_playlist_id = data.audio_playlist_id || facets.audio_playlist_id || "";
   byId = new Map(all.map(n => [n.id, n]));
   channelHype = new Map((data.channel_hype || []).map(c => [c.label, c.avg_hype]));
