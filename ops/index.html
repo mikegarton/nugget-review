@@ -70,11 +70,25 @@
   .note { color: var(--dim); font-size: 12.5px; margin-top: 6px; }
   .empty { color: var(--dim); padding: 20px; text-align: center; }
   .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+  /* Audio files (tts-audio-ops, 2026-10-29): the play in table order button
+     above the table, and the player bar pinned to the foot of the window in
+     every section, so playing goes on while another section is read. The bar
+     wraps, never scrolls sideways (spec G), and its text is 16 px. */
+  .abtn { font: inherit; font-size: 16px; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-height: 40px; min-width: 44px; cursor: pointer; }
+  .abtn:disabled { color: var(--faint); border-color: var(--faint); cursor: default; }
+  .player { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--card2); border-top: 1px solid var(--line);
+            padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .player[hidden] { display: none; }
+  .player .plnow { flex: 1 1 100%; min-width: 0; font-size: 16px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }   /* two lines, the full text in its title */
+  .player .abtn { flex: 1 1 0; }
+  .player .plskip { flex-basis: 100%; font-size: 16px; color: var(--yellow); overflow-wrap: anywhere; }
+  .player .plskip:empty { display: none; }
+  body.playing { padding-bottom: 130px; }
 </style>
 </head>
 <body>
 <h1>Nugget ops</h1>
-<div class="sub">Limits, channel economics, campaign yields, sources, tags, and knobs. Pick a section
+<div class="sub">Limits, channel economics, campaign yields, sources, tags, audio files, and knobs. Pick a section
 below; every table has filters, bounds, sort, a column chooser and an action cell (table-viewer v1).
 Save view keeps a table's filters, bounds, sort, columns and group under a name on this device; the View
 dropdown brings that table back with them; delete view removes the chosen one.
@@ -138,7 +152,9 @@ their HTTP status are in <b>yt_feed_sweeps.failures</b>.</div>
 cost of the videos that query found), then the funnel:
 found → screened out / promoted → processed → nuggets → your ratings.
 A query with finds but no ≥4★ after a couple of weeks is a candidate for stopping
-(the stop-phrase button on its headers in the viewer). Status: searching or stopped.</div>
+(the stop-phrase button on its headers in the viewer). <b>Phrase status</b> and
+<b>campaign status</b> are the words the database holds, draft, active or stopped;
+a phrase is searched only while both are active.</div>
 </section>
 
 <section data-sec="sources">
@@ -147,7 +163,7 @@ A query with finds but no ≥4★ after a couple of weeks is a candidate for sto
 <div class="note">One integer per method of acquisition, lower = processed sooner,
 ties allowed; the queue tie-break is newest-published. Manual adds jump to
 priority 0 for the first 3 per hour. Priority is editable here with the ops
-write key (the priority button). Sources are subscribed or discovered — provenance, not quality;
+write key (the priority button). <b>Enabled</b> says whether the source is read at all. Sources are subscribed or discovered — provenance, not quality;
 nuggets are rated on merit.</div>
 </section>
 
@@ -173,8 +189,10 @@ SQL-editor only: <code>update yt_categories set ttl_days = … where key = '…'
 <div id="totals"></div>
 <div class="note">Columns: identity, then prime value rates, then quality scores, then volume.
 Cost = Claude tokens + prorated Supadata credits, from the call log.
-Nugget counts are surviving nuggets. Disabled channels are
+Nugget counts are surviving nuggets. A channel is subscribed, not subscribed or
+blocked; its label carries the word when it is not subscribed. Channels not subscribed are
 campaign discoveries or manual-add hosts, not part of the subscribed poll list.
+A blocked channel is skipped by the poller, campaign discovery and the pending queue.
 Value rates are per-dollar — nug/$ and 5★/$ — because substack costs run
 magnitudes below video costs and "nuggets per dollar" compares cleanly where
 "$0.00003 per nugget" reads as noise; bigger is better, like every density
@@ -191,6 +209,8 @@ processed before 2026-07-25 predate cost logging and show $0 (per-dollar rates
 blank). The ratios are computed in the database views since 2026-09-22.
 Subscribe appears on YouTube channels that are not subscribed; the two unsub
 buttons on subscribed channels: nuggets stops the feed, YouTube unsubscribes the account.
+Block (armed, with the ops write key) puts a channel in the blocked state from any other;
+unblock returns a blocked channel to not subscribed.
 <b>cap/wk</b> and <b>priority</b> are the channel's weekly cap and processing priority
 (✎ = editable here with the ops write key; empty clears); <b>pending</b> and <b>stale</b>
 are its waiting items and the items expired unprocessed.</div>
@@ -200,6 +220,25 @@ are its waiting items and the items expired unprocessed.</div>
 <h2>Channel economics — by month</h2>
 <div id="monthly"></div>
 <div class="note">The month filter replaces the old month picker; All shows every month.</div>
+</section>
+
+<section data-sec="audio">
+<h2>Audio files</h2>
+<div style="margin:0 0 8px"><button type="button" class="abtn" id="playOrder">play in table order</button></div>
+<div id="audio"></div>
+<div class="note">One row per content item that has rendered voice audio: a nugget's
+card, a post, or a video's transcript. <b>Files</b> = the mp3 pieces the item was
+cut into; <b>length</b> is hours:minutes:seconds, <b>measured</b> from the file's
+header when the render wrote it, <b>est.</b> from the character count at 15
+characters a second for the files rendered before that. <b>Created</b> = the first
+piece's date; <b>cost</b> in dollars; <b>queued by</b> = the Audio list or the
+built playlist that asked for the item; <b>played</b> = an entry for it was played.
+<b>play</b> starts the item alone; <b>play in table order</b> plays the rows the
+table shows now, after filter, sort and group, one after another. The player bar
+at the foot of the page stays across sections: pause, next, stop. An item with no
+audio files is skipped and named in the bar. <b>delete</b> (armed, with the ops
+write key) removes the item's mp3 files, its render rows, its unplayed entries in
+the Audio list and the built playlists, and its A mark in the viewer.</div>
 </section>
 
 <section data-sec="sift">
@@ -252,6 +291,15 @@ Change one by editing the named function and redeploying; this listing is
 maintained by hand alongside it (2026-09-11).</div>
 </section>
 
+<div class="player" id="player" hidden>
+  <div class="plnow" id="plNow" role="status"></div>
+  <button type="button" class="abtn" id="plPause">pause</button>
+  <button type="button" class="abtn" id="plNext">next</button>
+  <button type="button" class="abtn" id="plStop">stop</button>
+  <div class="plskip" id="plSkip"></div>
+  <audio id="plAudio"></audio>
+</div>
+
 <script src="https://mikegarton.github.io/table-viewer/table-viewer-v1.js"></script>
 <script>
 // E14: the text-size pair at the right end of the pinned bar. A device can
@@ -289,6 +337,7 @@ const SECTIONS = [
   ["tags", "Category tags — coverage & TTL"],
   ["totals", "Channel economics — lifetime"],
   ["monthly", "Channel economics — by month"],
+  ["audio", "Audio files"],
   ["sift", "Sift time"],
   ["knobs", "Pipeline parameters — yt_params"],
   ["consts", "Code constants"],
@@ -346,8 +395,12 @@ const channelLever = (leverKey) => (v, r) =>
   '<span class="editable" style="color:var(--accent);cursor:pointer" title="click to edit (ops write key); empty clears" ' +
   "onclick=\"editChannelParam('" + esc(r.channel_id) + "','" + leverKey + "','" + esc(v ?? "") + "')\">" +
   (v == null ? "" : esc(v) + " ") + "✎</span>";
+// A channel's state is subscribed, not_subscribed or blocked (sub_state,
+// ruling channel-block-state a, 2026-10-29); the label carries the word unless
+// the channel is subscribed.
+const channelLabel = (v, r) => esc(v) + (r.sub_state != null && r.sub_state !== "subscribed" ? ' <span class="hot">(' + esc(String(r.sub_state).replace(/_/g, " ")) + ")</span>" : "");
 const TOTAL_COLS = [
-  { key: "label", label: "channel", render: (v, r) => esc(v) + (r.enabled === false ? ' <span class="hot">(not subscribed)</span>' : "") },
+  { key: "label", label: "channel", render: channelLabel },
   { key: "source", label: "source", render: sourceRender },
   { key: "nug_per_usd", label: "nug/$", decimals: 0 },
   { key: "nug_per_item", label: "nug/item", decimals: 2 },
@@ -371,7 +424,7 @@ const TOTAL_COLS = [
   { key: "supadata_calls", label: "transcripts", decimals: 0 },
   { key: "nuggets_per_transcript_minute", label: "nug/min", decimals: 3 },
   { key: "channel_id", visible: false },
-  { key: "enabled", visible: false },
+  { key: "sub_state", label: "state", visible: false },
   // Subscription throttle (spec draft 1, section 11): the two levers are edited
   // here (click, type, enter; empty clears), the two counts are read-only.
   // Zero is shown as 0; a blank lever shows only its pencil.
@@ -381,6 +434,15 @@ const TOTAL_COLS = [
   { key: "stale_total", label: "stale", decimals: 0 },
   { key: "kwords", visible: false, label: "kwords", decimals: 2 },
   { key: "first_processed_at", visible: false, label: "first processed" },
+  // The entity join copies yt_channels' columns beside the view's; these are
+  // its copies of columns the view already carries (ruling state-column-simplify a,
+  // 2026-10-29), kept hidden. channel_enabled went with the enabled column.
+  { key: "channel_enabled", visible: false },
+  { key: "channel_sub_state", visible: false },
+  { key: "channel_label", visible: false },
+  { key: "channel_source", visible: false },
+  { key: "channel_weekly_cap", visible: false },
+  { key: "channel_proc_priority", visible: false },
 ];
 const MONTH_HIDE = new Set(["nug_per_month", "taste_peak", "taste_med", "taste_avg",
   "mentor_peak", "mentor_med", "mentor_avg", "hype_med", "hype_avg", "first_processed_at",
@@ -389,12 +451,40 @@ const MONTH_COLS = [{ key: "label", label: "channel" }, { key: "month", label: "
   .concat(TOTAL_COLS.filter((c) => c.key !== "label" && !MONTH_HIDE.has(c.key)));
 
 // Channel actions (spec I): subscribe needs a YouTube channel id, which the
-// route checks; the two unsubs act on subscribed channels.
+// route checks; the two unsubs act on subscribed channels. Block and unblock
+// write the channel's state through /channel-state with the ops write key: block
+// from any other state, unblock only from blocked (back to not subscribed).
 const CHANNEL_ACTIONS = [
-  { label: "subscribe", when: (r) => r.enabled === false && r.source === "youtube", route: "/subscribe", payload: ["channel_id"], guard: "arm", done: "✓ subscribed" },
-  { label: "unsub nuggets", when: (r) => r.enabled === true, route: "/unsubscribe", side: "pipeline", payload: ["channel_id"], guard: "arm", done: "✓ nuggets unsubbed" },
-  { label: "unsub YouTube", when: (r) => r.enabled === true && r.source === "youtube", route: "/unsubscribe", side: "youtube", payload: ["channel_id"], guard: "arm", done: "✓ YouTube unsubbed" },
+  { label: "subscribe", when: (r) => r.sub_state === "not_subscribed" && r.source === "youtube", route: "/subscribe", payload: ["channel_id"], guard: "arm", done: "✓ subscribed" },
+  { label: "unsub nuggets", when: (r) => r.sub_state === "subscribed", route: "/unsubscribe", side: "pipeline", payload: ["channel_id"], guard: "arm", done: "✓ nuggets unsubbed" },
+  { label: "unsub YouTube", when: (r) => r.sub_state === "subscribed" && r.source === "youtube", route: "/unsubscribe", side: "youtube", payload: ["channel_id"], guard: "arm", done: "✓ YouTube unsubbed" },
+  { label: "block", when: (r) => r.sub_state !== "blocked", opsKey: true, route: "/channel-state", body: { sub_state: "blocked" }, payload: ["channel_id"], guard: "arm", done: "✓ blocked" },
+  { label: "unblock", when: (r) => r.sub_state === "blocked", opsKey: true, route: "/channel-state", body: { sub_state: "not_subscribed" }, payload: ["channel_id"], guard: "arm", done: "✓ unblocked" },
 ];
+
+const statusRender = (v) => v === "stopped" ? '<span class="hot">stopped</span>' : esc(v);
+// Seconds as h:mm:ss.
+function hms(sec) {
+  const t = Math.round(Number(sec));
+  if (!Number.isFinite(t)) return "—";
+  const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60;
+  return h + ":" + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+}
+// The audio table's request function: play is answered here, in the page, with
+// no route; every other action goes to the API as the others do.
+function audioRequest(action, row, body) {
+  if (action.label === "play") { playUnits([row]); return Promise.resolve({ ok: true, json: async () => ({}) }); }
+  return apiRequest(action, row, body);
+}
+// After play the row's button shows its done face; the table is drawn again so
+// the button can be pressed once more. After delete the item leaves the page's
+// rows with the next read, and the player moves on if it is the one playing.
+function audioAfter(action, row) {
+  if (action.label === "play") { mountOrUpdate("audio", ops.tts_audio || [], "tts_audio"); return; }
+  const cur = player.queue[player.i];
+  if (cur && cur.unit_type === row.unit_type && cur.unit_id === row.unit_id && player.on) plStart(player.i + 1);
+  load();
+}
 
 const SPECS = {
   // Limits & burn (ruling limits-viewer a, 2026-10-19, reversing d3 for this
@@ -431,12 +521,15 @@ const SPECS = {
   totals: { name: "channel-lifetime", site: "ops", section: "totals", identity: "label", sort: { key: "nug_per_usd", dir: "desc" },
     columns: TOTAL_COLS, actions: CHANNEL_ACTIONS, request: apiRequest, afterAction },
   monthly: { name: "channel-monthly", site: "ops", section: "monthly", identity: "label", sort: { key: "nug_per_usd", dir: "desc" },
-    columns: MONTH_COLS, request: apiRequest, afterAction },
+    columns: MONTH_COLS, actions: CHANNEL_ACTIONS, request: apiRequest, afterAction },
   yield: { name: "campaign-yield", site: "ops", section: "yield", identity: "query", sort: { key: "nug_per_item", dir: "desc" },
     columns: [
       { key: "query", label: "query" },
       { key: "campaign", label: "campaign", visible: false },
-      { key: "status", label: "status", visible: false, render: (v) => v === "stopped" ? '<span class="hot">stopped</span>' : esc(v) },
+      // The phrase's and the campaign's own status words, as the view holds them
+      // (ruling state-column-simplify a, 2026-10-29).
+      { key: "query_status", label: "phrase status", kind: "enum", render: statusRender },
+      { key: "campaign_status", label: "campaign status", kind: "enum", render: statusRender },
       { key: "nug_per_item", label: "nug/item", decimals: 2 },
       { key: "nug_per_usd", label: "nug/$", decimals: 0 },
       { key: "nug_per_kword", label: "nug/kw", decimals: 2 },
@@ -450,14 +543,20 @@ const SPECS = {
       { key: "cost_usd", label: "$", decimals: 2, visible: false },
       { key: "kwords", label: "kwords", decimals: 2, visible: false },
       { key: "query_id", visible: false },
-      { key: "active", visible: false },
+      // The entity join's copies of columns the view carries (see TOTAL_COLS):
+      // the phrase's status joins as status, its text as query_query.
+      { key: "status", visible: false },
+      { key: "query_query", visible: false },
+      { key: "query_active", visible: false },
+      { key: "campaign_created_at", visible: false },
+      { key: "campaign_sheet_extra", visible: false },
     ] },
   sources: { name: "sources", site: "ops", section: "sources", identity: "key", sort: { key: "priority", dir: "asc" },
     columns: [
-      { key: "key", label: "source", render: (v, r) => '<span class="swatch" style="background:' + esc(r.color || "#888") + '"></span>' + esc(v) + (r.enabled ? "" : ' <span class="hot">(off)</span>') },
+      { key: "key", label: "source", render: (v, r) => '<span class="swatch" style="background:' + esc(r.color || "#888") + '"></span>' + esc(v) },
       { key: "acquisition", label: "acquisition" },
       { key: "platform", label: "platform" },
-      { key: "state", label: "state" },
+      { key: "enabled", label: "enabled" },
       // The source's measured start, its first item's discovery day from the
       // view (source-start-date a, 2026-10-22); blank while it has none.
       { key: "first_item_at", label: "first item", render: (v) => v ? esc(String(v).slice(0, 10)) : "" },
@@ -471,13 +570,35 @@ const SPECS = {
       { key: "rated_ge4", label: "≥4★", decimals: 0 },
       { key: "five_star", label: "5★", decimals: 0 },
       { key: "color", visible: false },
-      { key: "enabled", visible: false },
     ],
     actions: [
       { label: "priority", opsKey: true, route: "/param", body: { table: "yt_sources" }, payload: ["key"],
         input: { column: "priority", key: "value" }, guard: "none", done: "saved" },
     ],
     request: apiRequest, afterAction },
+  // Audio files (tts-audio-ops, 2026-10-29): one row per content item with
+  // rendered voice audio, from /ops tts_audio. play is the page's own (the
+  // request function answers it, no route); delete goes to /tts-delete.
+  audio: { name: "audio-files", site: "ops", section: "audio", identity: "name", sort: { key: "mb", dir: "desc" },
+    columns: [
+      { key: "unit_type", label: "kind", kind: "enum" },
+      { key: "name", label: "name" },
+      { key: "files", label: "files", decimals: 0 },
+      { key: "mb", label: "MB", decimals: 1 },
+      { key: "duration_seconds", label: "length", decimals: 0, render: (v) => v == null ? "—" : hms(v) },
+      { key: "duration_source", label: "length source", kind: "enum", render: (v) => v === "est" ? "est." : esc(v) },
+      { key: "created_at", label: "created", kind: "date" },
+      { key: "cost_usd", label: "cost $", decimals: 3 },
+      { key: "queued_by", label: "queued by", kind: "enum" },
+      { key: "played", label: "played", kind: "bool", render: (v) => v ? "yes" : "" },
+      { key: "unit_id", visible: false },
+      { key: "voice", label: "voice", visible: false },
+    ],
+    actions: [
+      { label: "play", guard: "none", done: "▶" },
+      { label: "delete", opsKey: true, route: "/tts-delete", payload: ["unit_type", "unit_id"], guard: "arm", done: "✓ deleted" },
+    ],
+    request: audioRequest, afterAction: audioAfter },
   feed: { name: "feed-health", site: "ops", section: "feed", identity: "day", sort: { key: "day", dir: "desc" },
     columns: [
       { key: "day", label: "day (UTC)" },
@@ -506,6 +627,7 @@ const SPECS = {
       { key: "primary_nuggets", label: "primary", decimals: 0 },
       // The fluff detector: >60% coverage is a colour, never a filter.
       { key: "coverage_pct", label: "coverage %", decimals: 1, mark: (v) => Number(v) > 60 ? "warn" : null },
+      { key: "category_ttl_days", visible: false },   // the entity join's copy of ttl_days
     ] },
   // Sift time (tap log, 2026-09-30): both tables read views worked out from
   // yt_viewer_events. Column order = the tap-log spec's section 6.
@@ -556,6 +678,92 @@ function mountOrUpdate(id, rows, countKey) {
   if (mounts[id]) mounts[id].update(rows, meta);
   else mounts[id] = mountTable("#" + id, rows, SPECS[id], meta);
 }
+
+// ---- audio player (tts-audio-ops, 2026-10-29) ----
+// Plays a list of units one at a time in one <audio> element. A unit's signed
+// links (good for an hour) are asked for when that unit starts, never ahead;
+// its chunks play in seq order; a unit with no chunks is skipped and named in
+// the bar. gen counts starts and stops, so a late answer for a unit that was
+// skipped, stopped or replaced is dropped.
+const player = { queue: [], i: -1, chunks: [], j: 0, gen: 0, on: false, paused: false, skipped: [] };
+const plEl = { bar: document.getElementById("player"), now: document.getElementById("plNow"), pause: document.getElementById("plPause"),
+  next: document.getElementById("plNext"), stop: document.getElementById("plStop"), skip: document.getElementById("plSkip"), audio: document.getElementById("plAudio") };
+function plPaint(text) {
+  plEl.now.textContent = plEl.now.title = text;
+  plEl.pause.textContent = player.paused ? "resume" : "pause";
+  plEl.skip.textContent = player.skipped.length ? "Skipped, no audio files: " + player.skipped.join("; ") : "";
+}
+function plWhere(part) { const u = player.queue[player.i]; return (player.i + 1) + " of " + player.queue.length + (part ? " · " + part : "") + " · " + u.unit_type + " · " + u.name; }
+function playUnits(rows) {
+  const seen = new Set(), queue = [];
+  for (const r of rows) {                                            // one unit may hold several voices: play it once
+    const k = r.unit_type + ":" + r.unit_id;
+    if (!seen.has(k)) { seen.add(k); queue.push({ unit_type: r.unit_type, unit_id: r.unit_id, name: r.name || r.unit_id }); }
+  }
+  if (!queue.length) return;
+  player.queue = queue; player.skipped = []; player.paused = false; player.on = true;
+  plEl.bar.hidden = false; document.body.classList.add("playing");
+  plEl.pause.disabled = plEl.next.disabled = false;
+  plStart(0);
+}
+async function plStart(i) {
+  const gen = ++player.gen;
+  player.i = i; player.chunks = []; player.j = 0; player.paused = false;
+  plEl.audio.pause();
+  if (i >= player.queue.length) {
+    player.i = player.queue.length - 1; player.on = false;
+    plEl.pause.disabled = plEl.next.disabled = true;
+    plPaint("Finished " + player.queue.length + (player.queue.length === 1 ? " item." : " items."));
+    return;
+  }
+  const u = player.queue[i];
+  plPaint(plWhere("loading"));
+  let unit = null;
+  try {
+    const res = await fetch(BASE + "/tts-urls?key=" + encodeURIComponent(KEY), {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ units: [{ unit_type: u.unit_type, unit_id: u.unit_id }] }),
+    });
+    const data = await res.json();
+    unit = res.ok && data.units && data.units[0];
+  } catch (e) {}
+  if (gen !== player.gen) return;
+  const chunks = ((unit && unit.chunks) || []).slice().sort((a, b) => a.seq - b.seq);
+  if (!chunks.length) { player.skipped.push(u.name); plStart(i + 1); return; }
+  player.chunks = chunks;
+  plChunk(gen);
+}
+function plChunk(gen) {
+  if (gen !== player.gen) return;
+  const c = player.chunks[player.j], n = player.chunks.length;
+  plEl.audio.onended = plEl.audio.onerror = () => {
+    if (gen !== player.gen) return;
+    if (++player.j < n) plChunk(gen); else plStart(player.i + 1);
+  };
+  plEl.audio.src = c.url;
+  if (player.j + 1 < n) { const pre = new Audio(); pre.preload = "auto"; pre.src = player.chunks[player.j + 1].url; }
+  plPaint(plWhere(n > 1 ? "part " + (player.j + 1) + "/" + n : ""));
+  if (!player.paused) plEl.audio.play().catch(() => {});
+}
+plEl.pause.onclick = () => {
+  if (!player.on) return;
+  player.paused = !player.paused;
+  if (plEl.audio.getAttribute("src")) { if (player.paused) plEl.audio.pause(); else plEl.audio.play().catch(() => {}); }
+  plEl.pause.textContent = player.paused ? "resume" : "pause";
+};
+plEl.next.onclick = () => { if (player.on) plStart(player.i + 1); };
+plEl.stop.onclick = () => {
+  player.gen++; player.on = false; player.queue = []; player.i = -1;
+  plEl.audio.pause(); plEl.audio.removeAttribute("src"); plEl.audio.load();
+  plEl.bar.hidden = true; document.body.classList.remove("playing");
+};
+document.getElementById("playOrder").onclick = () => {
+  const h = mounts.audio;
+  if (!h || typeof h.shownRowsTblVwr !== "function") { alert("This device holds the previous table module; reload the page in a few minutes."); return; }
+  const rows = h.shownRowsTblVwr();
+  if (!rows.length) { alert("No rows are shown."); return; }
+  playUnits(rows);
+};
 
 // ---- pace bands (unchanged from 2026-08-01) ----
 function paceOf(used, quota, elapsed) {
@@ -694,7 +902,7 @@ function render() {
   const phrases = new Map();
   for (const r of (ops.campaign_yield || [])) {
     const p = phrases.get(r.campaign) || { total: 0, searching: 0 };
-    p.total += 1; if (r.active) p.searching += 1; phrases.set(r.campaign, p);
+    p.total += 1; if (r.query_status === "active") p.searching += 1; phrases.set(r.campaign, p);
   }
   const searchEvery = pmap.get("campaign_search_interval_days");
   budgets.forEach(b => {
@@ -739,18 +947,18 @@ function render() {
     : "No sync has arrived yet.") +
     " Campaigns and phrases are read from the database; the sheet only updates them.";
 
-  // The five template instances (ruling d3 a). Row transforms: month as
-  // YYYY-MM so it filters as an enum; a query's active flag as a status word;
-  // a source's enabled flag as a state word; sources merged with their economics.
-  // The phrase's own status from yt_campaign_queries (column-reach b) keeps its
-  // name as query_status; status stays the page's searching or stopped word.
-  mountOrUpdate("yield", (ops.campaign_yield || []).map(r => Object.assign({}, r, "status" in r ? { query_status: r.status } : {}, { status: r.active ? "searching" : "stopped" })), "campaign_yield");
+  // The template instances (ruling d3 a). Row transforms: month as YYYY-MM so
+  // it filters as an enum; sources merged with their economics. A state shows
+  // once, as the database holds it (ruling state-column-simplify a, 2026-10-29):
+  // the yield rows carry query_status and campaign_status, a source its enabled.
+  mountOrUpdate("yield", ops.campaign_yield || [], "campaign_yield");
   const econ = new Map((ops.source_econ || []).map(s => [s.key, s]));
-  mountOrUpdate("sources", (ops.sources || []).map(s => Object.assign({}, econ.get(s.key) || {}, s, { state: s.enabled ? "on" : "off" })), "sources");
+  mountOrUpdate("sources", (ops.sources || []).map(s => Object.assign({}, econ.get(s.key) || {}, s)), "sources");
   mountOrUpdate("feed", ops.feed_failures_daily || []);
   mountOrUpdate("tags", ops.tag_coverage || [], "tag_coverage");
   mountOrUpdate("totals", ops.channel_totals || [], "channel_totals");
   mountOrUpdate("monthly", (ops.channel_monthly || []).map(r => Object.assign({}, r, { month: String(r.month).slice(0, 7) })), "channel_monthly");
+  mountOrUpdate("audio", ops.tts_audio || [], "tts_audio");
   // Sift time. A sitting's identity is its start time to the second; a phrase
   // row's identity carries its campaign, since two campaigns can hold one phrase.
   mountOrUpdate("siftSittings", (ops.sift_sittings || []).map(r => Object.assign({}, r, {

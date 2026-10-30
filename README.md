@@ -37,19 +37,31 @@ bookmarks and an old N-add's share action keep working.
   pair at the bar's right end (sizes
   the whole page, remembered per device), shows one section at a time (Limits & burn, a table-viewer instance
   since 2026-10-19, with pause/resume searches per campaign, campaign yield, sources, category tags, channel
-  economics lifetime and by month, sift time (sittings, and time by source
+  economics lifetime and by month, audio files, sift time (sittings, and time by source
   and campaign phrase, worked out from the tap log; since 2026-09-30),
   parameters, code constants). Under the Limits table one line says when
   the last campaign sheet sync arrived (since 2026-10-01), and a campaign row's
   button stops or starts the campaign (draft, active, stopped at both levels since
-  2026-10-06). The metric tables are instances of the
+  2026-10-06). Audio files (since 2026-10-29) is one row per card, post or
+  transcript with rendered voice audio (kind, name, files, MB, length measured
+  or estimated, created, cost, queued by, played): play starts a row,
+  delete (armed, ops write key) removes its files, render rows, unplayed
+  playlist entries and A mark, play in table order plays the rows as the table
+  shows them (the table-viewer handle's `shownRowsTblVwr()`), and a player bar
+  fixed to the foot of every section offers pause, next and stop, asking
+  `/tts-urls` for each item as it starts and naming an item with no files
+  as skipped. A channel is subscribed, not subscribed or blocked: its label
+  carries the word, and block and unblock (armed, ops write key,
+  `/channel-state`) sit beside subscribe and the unsub pair. Campaign yield
+  shows the phrase's and the campaign's status words as the database holds
+  them, and sources show enabled once. The metric tables are instances of the
   table-viewer module, loaded from
   its own Pages site, `https://mikegarton.github.io/table-viewer/table-viewer-v1.js`,
   since 2026-09-24 (the copy in `ops/` was removed that day):
   enum filters with All first, a narrow panel with min/max bounds, Sort
   and Dir over every column, a column chooser, row folding instead of
   horizontal scroll, grouping, an action cell (subscribe, the unsub pair,
-  priority edit with the ops write key). Spec: working_docs
+  block and unblock, play and delete, priority edit with the ops write key). Spec: working_docs
   `projects\table-viewer\table-viewer-spec.md`. Marked knobs in the
   parameters section stay editable with the ops write key; bounds enforced
   server-side, changes audited. Installable as **N-ops**
@@ -235,6 +247,18 @@ limits: embedded playback pauses when the screen locks (hence the wake
 lock), and Media Session handlers are best effort — the embed's own media
 session may win on some devices. Acceptance test (spec §10.2): one tap on
 Start must carry into the second clip with no touch, on the phone.
+
+The Audio list and built playlists play what the player bar's **Play**
+pulldown says (card, full or both; saved per device, default card): the
+card's synthesized audio, the item's synthesized audio when it has
+finished, else its own audio (a video through the chosen route, a post's
+audio file in the viewer's own player); an entry with nothing to play is
+skipped and named. The builder row's **Item source** pulldown (synth,
+pref-native, only-native; saved per device, default only-native) and one
+commit button replace the three commit buttons; an A tap and a commit send
+both choices, and the server makes only what the pair calls for (the
+matrix of `working_docs\unapproved-draft-backup-dump\tts-audio-ops-plan-2026-10-29.md`,
+part 2). The "visible items" route keeps the phone's own voice for text.
 
 The header strip of the viewer shows pipeline status when quiet (month-to-
 date cost, Supadata usage, drift verdict) and turns into an alarm line when
