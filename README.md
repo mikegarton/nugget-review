@@ -270,12 +270,28 @@ matrix of `working_docs\unapproved-draft-backup-dump\tts-audio-ops-plan-2026-10-
 part 2). The visible items follow the same Play pulldown in Audio mode, over
 the units already rendered (card: the card's audio; full: the item's synthesized
 audio, else its own audio, else skipped by name; both: the card then the item;
-a post is voiced once for its listed nuggets); the phone's own voice no longer
-reads text there or anywhere in Audio mode, and Read mode is unchanged. A
+a post is voiced once for its listed nuggets); they play files only, never in a
+phone voice, and Read mode is unchanged. A
 rendered entry whose render is still in flight is waited for while it advances
 (a poll every 5 s; the bar reads "rendering audio… N of M ready"; playing starts
 with the first chunk and runs on through those finished since) and is skipped
 and named once the finished or pending count has not changed for 3 minutes.
+
+One **Voice** pulldown sits at the far right of the player bar's controls (saved per
+device, `tts_voice_choice`; it replaces the "voice for text items" pulldown and
+the builder row's Voice pulldown). It lists the 11 synthetic voices (the
+`yt_params` default marked) and then every reading voice the phone offers, shown
+"phone: <name>" and refilled when the phone's list changes. It is read when
+something is added: an A tap and a commit send it as `voice`, and each playlist
+item stores it (`vendor.model.voice`, or `phone:<name>`). A synthetic voice is the
+voice of every file the add makes, and the item's `/tts-urls` request asks for that
+voice. A phone voice makes no file: at play time the phone reads the card (headline,
+source title, content, coach's note) or the full text (a post's body, or the
+video's transcript) aloud in the stored voice, else the device's default voice,
+per the plan's phone-voice matrix (part 5): full with pref-native or only-native
+plays the item's own audio when it has some; pref-native without any is read;
+only-native without any is skipped and named (under both, the card is read and the
+item left out). The speed pulldown applies to reading and to audio files.
 
 The header strip of the viewer shows pipeline status when quiet (month-to-
 date cost, Supadata usage, drift verdict) and turns into an alarm line when

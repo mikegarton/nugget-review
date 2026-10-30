@@ -136,6 +136,7 @@
   #pbar.on { display: flex; }
   #pbar button, #pbar select { background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; font-size: 13px; }
   #pbar button.primary { background: var(--accent); border-color: var(--accent); color: #08131f; font-weight: 600; }
+  #pbar #pVoice { margin-left: auto; max-width: 100%; }
   #pbar .pnow { flex: 1 1 100%; color: var(--dim); font-size: 12px; }
   #pane { display: none; max-width: 760px; margin: 8px auto 0; padding: 0 10px; }
   #pane.on { display: block; }
@@ -1039,7 +1040,40 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 const TTS_PLAYS = ["card", "full", "both"], TTS_SOURCES = ["synth", "pref_native", "only_native"];
 function ttsPlay() { let p = null; try { p = localStorage.getItem("tts_play"); } catch (e) {} return TTS_PLAYS.includes(p) ? p : "card"; }
 function ttsItemSource() { let s = null; try { s = localStorage.getItem("tts_item_source"); } catch (e) {} return TTS_SOURCES.includes(s) ? s : "only_native"; }
-function audioChoice() { return { play: ttsPlay(), item_source: ttsItemSource() }; }
+// The one Voice setting (plan part 5, rulings d36 a, d41 a, d42 b), kept per
+// device under tts_voice_choice: one of the 11 synthetic voice names, or
+// "phone:<name>" for a reading voice of this phone. A synthetic voice is the
+// voice of every file an add makes; a phone voice makes no file and the phone
+// reads the item aloud as it plays. Default: the params default synthetic voice.
+const SYNTH_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"];
+function ttsVoiceChoice() {
+  let c = null; try { c = localStorage.getItem("tts_voice_choice"); } catch (e) {}
+  return SYNTH_VOICES.includes(c) || (c && c.indexOf("phone:") === 0 && c.length > 6) ? c : (ttsInfo.voice || "nova");
+}
+// "<vendor>.<model>.<voice>" -> { vendor, model, voice } (the model may hold dots); null for phone:* or junk.
+function parseSynthVoice(s) {
+  if (!s || String(s).indexOf("phone:") === 0) return null;
+  const a = String(s).split(".");
+  return a.length >= 3 ? { vendor: a[0], model: a.slice(1, -1).join("."), voice: a[a.length - 1] } : null;
+}
+const phoneVoiceName = (s) => (s && String(s).indexOf("phone:") === 0) ? String(s).slice(6) : null;
+// A chosen voice as a playlist item stores it: phone:<name>, or vendor.model.voice.
+const voiceStored = (c) => c.indexOf("phone:") === 0 ? c : ttsInfo.vendor + "." + ttsInfo.model + "." + c;
+function audioChoice() { return { play: ttsPlay(), item_source: ttsItemSource(), voice: ttsVoiceChoice() }; }
+// The Voice pulldown: 11 synthetic voices (the params default marked), then every
+// voice this phone offers as "phone: <name>". Refilled on voiceschanged.
+function fillVoiceSelect() {
+  const vs = document.getElementById("pVoice");
+  if (!vs) return;
+  const cur = ttsVoiceChoice();
+  const names = []; if (synth) for (const x of synth.getVoices()) if (!names.includes(x.name)) names.push(x.name);
+  const phone = names.map(x => "phone:" + x);
+  if (cur.indexOf("phone:") === 0 && !phone.includes(cur)) phone.push(cur); // a stored voice this list does not show (yet) stays shown
+  const opt = (val, label) => '<option value="' + esc(val) + '"' + (val === cur ? " selected" : "") + ">" + esc(label) + "</option>";
+  vs.innerHTML = SYNTH_VOICES.map(x => opt(x, x + (x === (ttsInfo.voice || "nova") ? " (default)" : ""))).join("") +
+    phone.map(x => opt(x, "phone: " + x.slice(6))).join("");
+}
+if (synth) synth.addEventListener("voiceschanged", fillVoiceSelect);
 
 function renderPlayerBar(v) {
   const bar = document.getElementById("pbar"), pane = document.getElementById("pane");
@@ -1067,8 +1101,8 @@ function renderPlayerBar(v) {
         (playlists || []).map(p => '<option value="' + p.id + '"' + (PL.playlistSel === p.id ? " selected" : "") + ">" + esc(p.kind === "system" ? "Audio list (system)" : p.name) + "</option>").join("") + "</select>" +
       '<select id="pPlay" title="what a playlist plays: the card, the full item (its synthesized audio, else its own audio), or the card then the item. Also what an A tap or a commit makes. Playlists and the visible items alike.">' +
         TTS_PLAYS.map(x => '<option value="' + x + '"' + (ttsPlay() === x ? " selected" : "") + ">play: " + x + "</option>").join("") + "</select>" +
-      '<select id="pVoice" title="voice for text items"></select>' +
-      '<select id="pRate" title="speed"><option value="0.85">0.85×</option><option value="1">1×</option><option value="1.15">1.15×</option><option value="1.3">1.3×</option><option value="1.5">1.5×</option></select>'
+      '<select id="pRate" title="speed"><option value="0.85">0.85×</option><option value="1">1×</option><option value="1.15">1.15×</option><option value="1.3">1.3×</option><option value="1.5">1.5×</option></select>' +
+      '<select id="pVoice" title="Voice: a synthetic voice (made on an add, kept as files) or a phone voice (no file; the phone reads the item aloud as it plays). Read when something is added; kept on this device."></select>'
     : "";
   bar.className = "on";
   bar.innerHTML =
@@ -1104,12 +1138,8 @@ function renderPlayerBar(v) {
       try { localStorage.setItem("tts_play", e.target.value); } catch (err) {}
       PL.plCache = null; PL.visCache = null; playerStop(); render(); // the entries follow Play: expand again
     };
-    const vs = document.getElementById("pVoice");
-    const fill = () => { if (!synth) { vs.innerHTML = '<option value="">no speech</option>'; return; }
-      const saved = localStorage.getItem("tts_voice") || "";
-      vs.innerHTML = synth.getVoices().filter(x => /^en/i.test(x.lang)).map(x => '<option value="' + esc(x.name) + '"' + (x.name === saved ? " selected" : "") + ">" + esc(x.name.replace(/^Google\s+/, "")) + "</option>").join("") || '<option value="">default voice</option>'; };
-    fill(); if (synth) synth.onvoiceschanged = fill;
-    vs.onchange = (e) => localStorage.setItem("tts_voice", e.target.value);
+    fillVoiceSelect();
+    document.getElementById("pVoice").onchange = (e) => { try { localStorage.setItem("tts_voice_choice", e.target.value); } catch (err) {} };
     const rs = document.getElementById("pRate"); rs.value = localStorage.getItem("tts_rate") || "1";
     rs.onchange = (e) => localStorage.setItem("tts_rate", e.target.value);
   }
@@ -1218,6 +1248,7 @@ function audioEl() {
   return PL.audioEl;
 }
 async function renderAudio(n, pane, done) {
+  if (n._read) { readEntry(n, pane, done); return; }
   if (n._native) { playNativeAudio(n, pane, done); return; }
   // Tier-2 (spec §9f): prefer a rendered audio file when one exists (or when
   // this is a playlist entry, whose render may still be in flight — the player
@@ -1273,6 +1304,37 @@ async function renderAudio(n, pane, done) {
   if (isPostSource(n)) { await speakPost(n, pane, done); return; }
   playYouTubeAudio(n, pane, done);
 }
+// A playlist entry stored with a phone voice (plan part 5): no file ever; the phone
+// reads the text aloud now. n._read is "card" (headline, source title, content,
+// coach's note, as yt-tts cardText) or "full" (a post's body, or the video's
+// transcript); n._phone is the stored voice name ("" = the device's default).
+async function readEntry(n, pane, done) {
+  const live = () => PL.active && PL.items[PL.idx] === n;
+  pane.innerHTML = '<div class="ptext" id="ttsPane" style="color:var(--dim)">loading text…</div>';
+  let chunks = [];
+  try {
+    if (n._read === "card") {
+      if (n.content == null) await ensureBodies([n.id], true);
+      const parts = [];
+      if (n.headline) parts.push(n.headline.trim() + ".");
+      if (n.videoTitle) parts.push("From: " + n.videoTitle.trim() + ".");
+      if (n.content) parts.push(n.content.trim());
+      if (n.rationale) parts.push("Coach's note: " + n.rationale.trim());
+      chunks = speakable(parts.join("\n\n"));
+    } else if (isPostSource(n)) {
+      const p = await (await fetch(BASE + "/post?key=" + encodeURIComponent(KEY) + "&id=" + encodeURIComponent(n.video_id))).json();
+      const body = speakable(p && p.text);
+      chunks = body.length ? [p.title || n.videoTitle].concat(body) : [];
+    } else {
+      const res = await fetch(BASE + "/transcript?key=" + encodeURIComponent(KEY) + "&id=" + encodeURIComponent(n.video_id));
+      const t = res.ok ? await res.json() : null;
+      chunks = speakable(t && (t.text || String(t.timed || "").replace(/^\[\d+:\d{2}\]\s*/gm, "")));
+    }
+  } catch (e) { chunks = []; }
+  if (!live()) return;
+  if (!chunks.length) { skipEntry(n, n._read === "card" ? "no card text to read" : "no text to read", 1); return; }
+  speakChunks(n, chunks, done, 1);
+}
 // A playlist entry that plays the item's OWN audio (the Play choice already
 // decided, so no size-vs-article heuristic): a post's audio enclosure in our
 // <audio>, a video through the chosen route.
@@ -1318,16 +1380,20 @@ async function speakPost(n, pane, done) {
   let p; try { p = await (await fetch(BASE + "/post?key=" + encodeURIComponent(KEY) + "&id=" + encodeURIComponent(n.video_id))).json(); } catch (e) { p = null; }
   speakChunks(n, [p?.title || n.videoTitle].concat(speakable(p?.text)), done);
 }
-function speakChunks(n, chunks, done) {
+// Reads chunks aloud one utterance at a time. The voice: an entry read in a stored
+// phone voice (n._phone) uses that voice by name, else the device's default voice;
+// older paths use the Voice pulldown's phone choice. min: the fewest chunks worth
+// reading (a post is its title plus text, so 2).
+function speakChunks(n, chunks, done, min) {
   if (!synth) { const el = document.getElementById("ttsPane"); if (el) el.textContent = "no speech synthesis on this browser — skipping"; setTimeout(() => PL.active && done(), 800); return; }
-  if (chunks.length < 2) { const el = document.getElementById("ttsPane"); if (el) el.textContent = "no stored text (teaser-only) — skipping"; setTimeout(() => PL.active && done(), 800); return; }
+  if (chunks.length < (min || 2)) { const el = document.getElementById("ttsPane"); if (el) el.textContent = "no stored text (teaser-only) — skipping"; setTimeout(() => PL.active && done(), 800); return; }
   PL.tts.chunks = chunks; PL.tts.pos = 0;
   const next = () => {
     if (!PL.active || PL.items[PL.idx] !== n) return;
     if (PL.tts.pos >= chunks.length) { done(); return; }
     const text = chunks[PL.tts.pos++];
     const u = new SpeechSynthesisUtterance(text);
-    const want = localStorage.getItem("tts_voice") || ""; const v = synth.getVoices().find(x => x.name === want); if (v) u.voice = v;
+    const want = n._phone != null ? n._phone : (phoneVoiceName(ttsVoiceChoice()) || ""); const v = want ? synth.getVoices().find(x => x.name === want) : null; if (v) u.voice = v;
     u.rate = Number(localStorage.getItem("tts_rate") || "1") || 1;
     u.onend = () => { if (PL.tts.utter === u) next(); };
     u.onerror = (e) => { if (e.error !== "interrupted" && e.error !== "canceled") setTimeout(next, 200); };
@@ -1441,7 +1507,7 @@ async function playRenderedUnit(n, unit, pane, done) {
     try {
       const res = await (await fetch(BASE + "/tts-urls?key=" + encodeURIComponent(KEY), {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ units: [unit] }),
+        body: JSON.stringify(n._voiceTrio ? { units: [unit], voice: n._voiceTrio } : { units: [unit] }),
       })).json();
       u = res && res.units && res.units[0];
     } catch (e) {}
@@ -1535,6 +1601,25 @@ function matrixEntries(n, play, cardMade, fullMade) {
     : hasNativeAudio(n) ? { ...n, _native: true } : null;
   return { cardE, itemE };
 }
+// The matrix when the item is stored with a phone voice (plan part 5): nothing was
+// made, so the phone reads at play time. card -> read the card; full -> by item
+// source: synth reads the item, pref-native plays the item's own audio when it has
+// some else reads it, only-native plays its own audio else is skipped by name;
+// both -> the card read, then the item as full would. Entries are copies:
+// _read ("card" | "full") with _phone (the stored voice name), or _native.
+function phoneEntries(n, play, itemSource, phone) {
+  const readE = (what) => ({ ...n, _read: what, _phone: phone });
+  const cardE = play !== "full" ? readE("card") : null;
+  let itemE = null, skip = null;
+  if (play !== "card") {
+    if (itemSource === "synth") itemE = readE("full");
+    else if (hasNativeAudio(n)) itemE = { ...n, _native: true };
+    else if (itemSource === "pref_native") itemE = readE("full");
+    else if (play === "full") skip = "only-native: no native audio";
+    // both + only-native + nothing native: the card is read, the item is skipped
+  }
+  return { cardE, itemE, skip };
+}
 const skipWhy = (play) => play === "card" ? "no card audio" : play === "full" ? "no full audio" : "no card or full audio";
 // The visible items in Audio mode, expanded by the same matrix over the units
 // known to be rendered (ruling d27 a, 2026-10-29): no phone-voice reading. A
@@ -1581,12 +1666,23 @@ function expandPlaylist(id) {
     const n = byId.get(it.nugget_id);
     if (!n) continue; // outside the loaded set (v1 limit: load a scope covering it)
     const ch = itemChoice(it);
+    const phone = phoneVoiceName(it.voice);
+    if (phone !== null) {
+      const { cardE, itemE, skip } = phoneEntries(n, play, ch.item_source, phone);
+      if (cardE && (itemE || skip)) cardE._noStamp = true;
+      if (cardE) out.push(cardE);
+      if (itemE) out.push(itemE);
+      if (skip) out.push({ ...n, _skip: skip });
+      continue;
+    }
+    const trio = parseSynthVoice(it.voice); // a synthetic item asks /tts-urls for ITS voice
     const fullUnit = { unit_type: isPostSource(n) ? "post" : "transcript", unit_id: n.video_id };
     const cardMade = ttsRendered.has("card:" + n.id) || ch.play === "card" || ch.play === "both";
     const fullMade = ttsRendered.has(fullUnit.unit_type + ":" + fullUnit.unit_id) ||
       ((ch.play === "full" || ch.play === "both") &&
         (ch.item_source === "synth" || (ch.item_source === "pref_native" && !hasNativeAudio(n))));
     const { cardE, itemE } = matrixEntries(n, play, cardMade, fullMade);
+    if (trio) for (const e of [cardE, itemE]) if (e && e._ttsUnit) e._voiceTrio = trio;
     if (cardE && itemE) cardE._noStamp = true; // the item follows and stamps
     if (cardE) out.push(cardE);
     if (itemE) out.push(itemE);
@@ -1603,7 +1699,6 @@ function renderBuilderRow(v) {
   if (!row) return;
   if (!loadedSel) { row.innerHTML = ""; return; }
   const built = (playlists || []).filter(p => p.kind === "built");
-  const VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"];
   row.innerHTML =
     '<span class="ctl"><label>Playlist builder — top N of this view</label><span>' +
     '<button id="bMinus" class="util" title="minus 1">&#8722;</button>' +
@@ -1616,8 +1711,6 @@ function renderBuilderRow(v) {
     '<button id="bCommit" title="add the top N to the playlist, each as the player bar&#39;s Play choice (now: ' + ttsPlay() + ') with this Item source">COMMIT · ' + ttsPlay() + "</button></span></span>" +
     '<span class="ctl"><label for="bList">Into</label><select id="bList"><option value="">new playlist</option>' +
     built.map(p => '<option value="' + p.id + '">' + esc(p.name) + "</option>").join("") + "</select></span>" +
-    '<span class="ctl"><label for="bVoice">Voice</label><select id="bVoice">' +
-    VOICES.map(x => '<option value="' + x + '"' + (x === (ttsInfo.voice || "nova") ? " selected" : "") + ">" + x + (x === ttsInfo.voice ? " (default)" : "") + "</option>").join("") + "</select></span>" +
     '<span class="pnow" id="bMsg"></span>';
   document.getElementById("bPlus").onclick = () => { builderN += 1; renderBuilderRow(v); };
   document.getElementById("bFast").onclick = () => { builderN += 5; renderBuilderRow(v); };
@@ -1626,14 +1719,13 @@ function renderBuilderRow(v) {
   document.getElementById("bCommit").onclick = () => builderCommit(v);
 }
 async function builderCommit(v) {
-  const { play, item_source } = audioChoice(); // Play from the player bar, Item source from this row
+  const { play, item_source, voice } = audioChoice(); // Play and Voice from the player bar, Item source from this row
   const listId = document.getElementById("bList").value || null;
-  const voice = document.getElementById("bVoice").value;
   const msg = document.getElementById("bMsg");
   const pl = (playlists || []).find(p => p.id === listId);
   const have = new Set(pl ? (pl.items || []).map(i => i.nugget_id) : []); // one item per nugget in a playlist
   const items = v.filter(n => !have.has(n.id)).slice(0, builderN)
-    .map(n => ({ nugget_id: n.id, play, item_source }));
+    .map(n => ({ nugget_id: n.id, play, item_source, voice }));
   if (!items.length) { msg.textContent = "nothing new to commit"; return; }
   msg.textContent = "committing " + items.length + "…";
   const body = { items };
@@ -1641,7 +1733,6 @@ async function builderCommit(v) {
   else {
     const d = new Date();
     body.name = (d.getMonth() + 1) + "-" + d.getDate() + " " + (loadedSel.scope || "all") + " " + state.sort + " top" + items.length + " " + play + (play === "card" ? "" : " " + item_source.replace("_", "-"));
-    if (voice && voice !== ttsInfo.voice) body.voice = { vendor: ttsInfo.vendor, model: ttsInfo.model, voice };
   }
   try {
     const res = await fetch(BASE + "/builder-commit?key=" + encodeURIComponent(KEY), {
@@ -1649,13 +1740,10 @@ async function builderCommit(v) {
     });
     const j = await res.json();
     if (!res.ok) { msg.textContent = "error: " + (j.error || res.status); return; }
-    const newItems = (start) => items.map((it, k) => ({ playlist_id: j.playlist_id, position: start + k, nugget_id: it.nugget_id, play: it.play, item_source: it.item_source, played_at: null }));
+    const newItems = (start) => items.map((it, k) => ({ playlist_id: j.playlist_id, position: start + k, nugget_id: it.nugget_id, play: it.play, item_source: it.item_source, voice: voiceStored(it.voice), played_at: null }));
     if (pl) pl.items = (pl.items || []).concat(newItems(pl.items ? pl.items.length : 0));
     else playlists.push({
       id: j.playlist_id, kind: "built", name: body.name,
-      voice_vendor: body.voice ? body.voice.vendor : null,
-      voice_model: body.voice ? body.voice.model : null,
-      voice_voice: body.voice ? body.voice.voice : null,
       items: newItems(0),
     });
     msg.textContent = "committed " + j.items + " item(s), " + j.jobs + " render job(s) — first audio in ~15-20 s";
