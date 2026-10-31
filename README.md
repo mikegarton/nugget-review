@@ -29,8 +29,16 @@ bookmarks and an old N-add's share action keep working.
 - `view/clips.html` — the clip player (2026-08-22): plays the queued
   nuggets as clips back-to-back in an embedded YouTube player — one tap,
   phone in the pocket, audio on earbuds. Same key as the viewer.
-- `ops/index.html` — a section page since 2026-09-22: a pinned Section
-  dropdown, then since 2026-10-22 the saved-view widgets (View, save view,
+- `ops/index.html` — a section page since 2026-09-22. The pinned bar is one
+  line since 2026-10-30: the table chooser at the left (no label; "select
+  table" until a table is chosen on the device, then the chosen name, cut to
+  its width), A− A+ at the right, and between them, dragged sideways, the
+  focus chip and the saved-view widgets. Focus folds every table's controls
+  and turns the bar into a strip, as the nugget viewer's does: controls, a
+  mode chip cycling where (row counts and filters), order (sort and group,
+  with the fold chip) and view (A− A+); a tap on the strip's text brings the
+  controls back; both kept per device (table-viewer spec E16). Since
+  2026-10-22 the saved-view widgets (View, save view,
   delete view: a table's filters, bounds, sort, columns and group kept
   under a name on this device and brought back, with its section, from
   anywhere on the page; table-viewer spec E15), with the A− A+ text-size
