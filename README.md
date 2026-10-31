@@ -29,21 +29,24 @@ bookmarks and an old N-add's share action keep working.
 - `view/clips.html` — the clip player (2026-08-22): plays the queued
   nuggets as clips back-to-back in an embedded YouTube player — one tap,
   phone in the pocket, audio on earbuds. Same key as the viewer.
-- `ops/index.html` — a section page since 2026-09-22. The pinned bar is one
-  line since 2026-10-30: the table chooser at the left (no label; "select
-  table" until a table is chosen on the device, then the chosen name, cut to
-  its width), A− A+ at the right, and between them, dragged sideways, the
-  focus chip and the saved-view widgets. Focus folds every table's controls
-  and turns the bar into a strip, as the nugget viewer's does: controls, a
-  mode chip cycling where (row counts and filters), order (sort and group,
-  with the fold chip) and view (A− A+); a tap on the strip's text brings the
-  controls back; both kept per device (table-viewer spec E16). Since
-  2026-10-22 the saved-view widgets (View, save view,
-  delete view: a table's filters, bounds, sort, columns and group kept
-  under a name on this device and brought back, with its section, from
-  anywhere on the page; table-viewer spec E15), with the A− A+ text-size
-  pair at the bar's right end (sizes
-  the whole page, remembered per device), shows one section at a time (Limits & burn, a table-viewer instance
+- `ops/index.html` — a section page since 2026-09-22. Since 2026-10-31 the
+  table-viewer module's version 2 draws the page around the tables
+  (table-viewer spec draft 13, E1 and E14 to E17): a pinned top row of focus,
+  the controls status between < and > (view, table, columns, filters, narrow,
+  group, order, notes, wrapping around; every load starts at table; choosing a
+  view or a table moves it one step forward), a count (columns at view and
+  columns, rows at every other step, stacked) and Z− Z+; under it the step's
+  row: the View list with save view and delete view in the bottom corners, the
+  table chooser with the instructions, the column buttons, filters, bound boxes,
+  group, order, or the table's notes by category. Focus shows controls, the
+  table's name dragged sideways, the rows count and Z− Z+. The page hands the
+  module one entry per table (Sift time's two tables are two entries) plus its
+  own Pipeline parameters and Code constants, each with its notes, and sets
+  `--tv-bottom-inset` while the player bar shows. Saved views (a table's filters,
+  bounds, sort, columns and group kept under a name on this device; since
+  2026-10-22) and the text size (sizes
+  the whole page, remembered per device) are the module's too. One entry
+  shows at a time (Limits & burn, a table-viewer instance
   since 2026-10-19, with pause/resume searches per campaign, campaign yield, sources, category tags, channel
   economics lifetime and by month, audio files, sift time (sittings, and time by source
   and campaign phrase, worked out from the tap log; since 2026-09-30),
@@ -69,9 +72,9 @@ bookmarks and an old N-add's share action keep working.
   shows the phrase's and the campaign's status words as the database holds
   them, and sources show enabled once. The metric tables are instances of the
   table-viewer module, loaded from
-  its own Pages site, `https://mikegarton.github.io/table-viewer/table-viewer-v1.js`,
-  since 2026-09-24 (the copy in `ops/` was removed that day):
-  enum filters with All first, a narrow panel with min/max bounds, Sort
+  its own Pages site, `https://mikegarton.github.io/table-viewer/table-viewer-v1.js`
+  since 2026-09-24 and `table-viewer-v2.js` since 2026-10-31 (the copy in `ops/` was removed 2026-09-24):
+  enum filters with All first, min/max bounds, Sort
   and Dir over every column, a column chooser, row folding instead of
   horizontal scroll, grouping, an action cell (subscribe, the unsub pair,
   block and unblock, play and delete, priority edit with the ops write key). Spec: working_docs

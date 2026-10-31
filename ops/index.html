@@ -26,33 +26,11 @@
   h1 { font-size: 20px; margin-bottom: 2px; }
   .sub { color: var(--dim); font-size: 13px; margin-bottom: 8px; }
   h2 { font-size: 16px; margin: 14px 0 8px; }
-  /* Section selector (table-viewer spec E1, Mike's rulings d1, d2 a, d16 a):
-     one native dropdown pinned at the top; the chosen section renders alone. */
-  /* The bar is one line at every text size (spec F.1, ruling ops-bar-pins c):
-     the table chooser fixed at the left, cut to its width (table-chooser-reopen
-     b); the text-size pair fixed at the right; between them the focus chip and
-     the saved-view widgets, dragged sideways with a finger, no scrollbar. */
-  .secbar { position: sticky; top: 0; background: var(--bg); padding: 8px 0; z-index: 5; display: flex; flex-wrap: nowrap; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); }
-  .secbar label { font-size: 13px; color: var(--dim); }
-  .secbar select { font: inherit; font-size: 16px; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; min-height: 40px; max-width: 100%; }
-  #secSel { flex: 0 1 auto; min-width: 0; max-width: 45%; }
-  .secdrag, #stripSub { flex: 1 1 auto; min-width: 0; display: flex; gap: 8px; align-items: center;
-                        overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-  .secdrag::-webkit-scrollbar, #stripSub::-webkit-scrollbar { display: none; }
-  .secdrag > *, .secdrag .tv-views > *, #stripSub > * { flex: none; }
-  .chip { font: inherit; font-size: 16px; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px;
-          padding: 4px 10px; min-height: 40px; cursor: pointer; white-space: nowrap; flex: none; }   /* the select's height, so the bar keeps one height in every state */
-  .chip:disabled { color: var(--faint); border-color: var(--faint); text-decoration: line-through; cursor: default; }
-  .chip.mode { color: var(--accent); border-color: var(--accent); font-weight: 600; }
-  /* Focus strip (spec E16, ruling ops-focus-strip a; viewer-spec §14): while
-     on, the strip takes the bar's place and the module hides every table's
-     control rows, panels and count line under html.tv-focus. */
-  #strip { display: none; flex: 1 1 auto; min-width: 0; gap: 8px; align-items: center; }
-  .tv-focus #secSel, .tv-focus .secdrag, .tv-focus .secbar > #textSize { display: none; }
-  .tv-focus #strip { display: flex; }
-  .stxt { font-size: 16px; white-space: nowrap; cursor: pointer; }
-  .stxt b { color: var(--dim); }
-  section { display: none; } section.on { display: block; }
+  /* The top row, the controls status, the table chooser, focus mode and the
+     saved views are the table-viewer module's (v2, spec draft 13, ruling
+     module-page-split a); the module shows one entry's section at a time. */
+  section[hidden] { display: none; }
+  .abtn, .twrap button { border: 2px solid var(--accent); border-radius: 10px; }   /* every clickable item a rounded rectangle (his words, 2026-10-31) */
   .cards { display: flex; flex-wrap: wrap; gap: 8px; }
   .bcard {
     background: var(--card); border: 1px solid var(--line); border-radius: 10px;
@@ -106,37 +84,9 @@
 </style>
 </head>
 <body>
-<h1>Nugget ops</h1>
-<div class="sub">Limits, channel economics, campaign yields, sources, tags, audio files, and knobs. Pick one in
-the select table dropdown below; focus folds the controls into one line and controls brings them back; every table has filters, bounds, sort, a column chooser and an action cell (table-viewer v1).
-Save view keeps a table's filters, bounds, sort, columns and group under a name on this device; the View
-dropdown brings that table back with them; delete view removes the chosen one.
-Marked knobs are editable here with the ops write key; everything else is SQL-editor only.</div>
-<div class="secbar"><select id="secSel" aria-label="table"></select><div class="secdrag"><button type="button" class="chip" id="focusChip">focus</button><span id="views"></span></div><div id="strip"><button type="button" class="chip" id="ctlChip">controls</button><button type="button" class="chip mode" id="modeChip">where</button><div id="stripSub"></div></div><span id="textSize"></span></div>
+<div id="opsTop"></div>
 
 <section data-sec="limits">
-<h2>Limits &amp; burn</h2>
-<div class="note" style="margin:0 0 8px">
-Each row names the resource being consumed and the consumer.
-<b>Projected at reset</b> = share of quota used ÷ share of the period elapsed —
-a straight-line projection of where the period ends.
-<span class="p-blue">blue</span> &lt;50% ·
-<span class="p-green">green</span> 50–75% ·
-<span class="p-yellow">yellow</span> 75–90% ·
-<span class="p-orange">orange</span> 90–100% ·
-<span class="p-red">red</span> ≥100%.
-Types: <b>expires</b> = prepaid allotment, unused value is lost at reset;
-<b>ceiling</b> = do-not-exceed cap; <b>metered</b> = pay-per-use judged against a
-chosen budget — nothing blocks at it. The database-size row has no growth
-history to project from, so it shows the share used now in the same five colors and has no tick. The tick on each bar marks where
-"exactly on pace" would be right now. A campaign and each of its phrases hold
-one of draft, active, stopped; a phrase is searched only while it and its
-campaign are both active. A campaign row's <b>stop campaign</b> sets the
-campaign to stopped and stops every active phrase of it with one shared
-stamp; its waiting videos are not processed while it is stopped. <b>start
-campaign</b> sets it to active and restarts exactly the phrases that stamp
-stopped (viewer headers show a stopped phrase as Stopped). The campaign
-sheet changes the same words.</div>
 <div id="limits"></div>
 <div id="queueToday" class="note" style="margin-top:8px" hidden></div>
 <div id="killed" class="cards" style="margin-top:8px"></div>
@@ -144,172 +94,48 @@ sheet changes the same words.</div>
 </section>
 
 <section data-sec="feed">
-<h2>Feed health — RSS fetch failures</h2>
 <div id="feed"></div>
-<div class="note">One row per UTC day, from the hourly poller's sweep log
-(since 2026-09-28; before that a failed feed left no record). <b>Feeds failed
-all day</b> is the headline: feeds that failed in every sweep of the day, so no
-sweep read them; a feed that fails some hours and is read in others is a delay,
-not a loss (YouTube refused every channel feed between 22:00 and 07:00 UTC
-through 2026-10-19). A <b>fetch</b> is one channel's feed in one sweep.
-<b>Failed</b> = still failing after the one retry (10 s timeout, 2 s pause, no
-retry of a 404, see the parameters section); <b>retry saved</b> = failed once,
-fetched on the retry. <b>Rescued by API</b> = a YouTube feed that
-answered 404 and was read instead from the channel's uploads playlist through
-the YouTube API, one quota unit each (since 2026-10-25); it is not counted as
-failed. YouTube still refuses most channel feeds from about 00:00 to 07:00 UTC,
-so a full day shows about 150 to 170 of these. A full UTC day holds 24 sweeps, so a day with
-fewer sweeps lost a sweep entirely (the run was killed before it could log);
-today's row is partial. Feeds failed all day shows as yellow. The failing channels and
-their HTTP status are in <b>yt_feed_sweeps.failures</b>.</div>
 </section>
 
 <section data-sec="yield">
-<h2>Campaign yield by query</h2>
 <div id="yield"></div>
-<div class="note">Prime indicators first (nug/item · nug/$ · nug/kw — cost is every call
-cost of the videos that query found), then the funnel:
-found → screened out / promoted → processed → nuggets → your ratings.
-A query with finds but no ≥4★ after a couple of weeks is a candidate for stopping
-(the stop-phrase button on its headers in the viewer). <b>Phrase status</b> and
-<b>campaign status</b> are the words the database holds, draft, active or stopped;
-a phrase is searched only while both are active.</div>
 </section>
 
 <section data-sec="sources">
-<h2>Sources — priority &amp; economics</h2>
 <div id="sources"></div>
-<div class="note">One integer per method of acquisition, lower = processed sooner,
-ties allowed; the queue tie-break is newest-published. Manual adds jump to
-priority 0 for the first 3 per hour. Priority is editable here with the ops
-write key (the priority button). <b>Enabled</b> says whether the source is read at all. Sources are subscribed or discovered — provenance, not quality;
-nuggets are rated on merit.</div>
 </section>
 
 <section data-sec="tags">
-<h2>Category tags — coverage &amp; TTL</h2>
 <div id="tags"></div>
-<div class="note">Nuggets carry ordered category tags, primary first (since
-2026-08-06; older nuggets show their legacy type instead). <b>Primary</b> is
-the tag in position one — the only tag counted where totals must equal sums,
-like cost attribution. <b>Coverage</b> = share of categorized nuggets carrying
-the tag in any position; because tags are multiple, coverage sums exceed 100%
-by design. A tag above ~60% coverage presumptively isn't earning its keep —
-<i>unless</i> it stratifies (rare on most sources, dominant on a few; filter
-on it in the viewer and see whether it separates channels). Human call, not a
-rule; the yellow figure is the flag. <b>TTL</b> is the tag's soft-expiry window: unrated nuggets outlive the
-longest TTL among their tags and drop out of "open" (rows kept — the viewer's
-Expired chip lists them; rating a nugget exempts it for good). TTL edits are
-SQL-editor only: <code>update yt_categories set ttl_days = … where key = '…';</code></div>
 </section>
 
 <section data-sec="totals">
-<h2>Channel economics — lifetime</h2>
 <div id="totals"></div>
-<div class="note">Columns: identity, then prime value rates, then quality scores, then volume.
-Cost = Claude tokens + prorated Supadata credits, from the call log.
-Nugget counts are surviving nuggets. A channel is subscribed, not subscribed or
-blocked; its label carries the word when it is not subscribed. Channels not subscribed are
-campaign discoveries or manual-add hosts, not part of the subscribed poll list.
-A blocked channel is skipped by the poller, campaign discovery and the pending queue.
-Value rates are per-dollar — nug/$ and 5★/$ — because substack costs run
-magnitudes below video costs and "nuggets per dollar" compares cleanly where
-"$0.00003 per nugget" reads as noise; bigger is better, like every density
-column. <b>nug/mo</b> = surviving nuggets ÷ months since the channel's first
-processed item (denominator floored at 1 month, like views/day's 1-day floor).
-<b>taste</b> = the AI's guess at your interest (0–100); <b>mentor</b> = the AI's
-outside-expert value-per-time score (0–100); pk/med/avg = peak, median, average
-over surviving nuggets. <b>hype</b> (−5…+5) is per scored video, including
-zero-nugget ones. Substack transcript/minutes columns are legitimately blank;
-nug/item and <b>nug/kw</b> (nuggets per 1,000 words of transcript or post) are
-the density metrics both sources share — nug/kw counts only items processed
-since word counting began (2026-07-30), on both sides of the ratio. Channels
-processed before 2026-07-25 predate cost logging and show $0 (per-dollar rates
-blank). The ratios are computed in the database views since 2026-09-22.
-Subscribe appears on YouTube channels that are not subscribed; the two unsub
-buttons on subscribed channels: nuggets stops the feed, YouTube unsubscribes the account.
-Block (armed, with the ops write key) puts a channel in the blocked state from any other;
-unblock returns a blocked channel to not subscribed.
-<b>cap/wk</b> and <b>priority</b> are the channel's weekly cap and processing priority
-(✎ = editable here with the ops write key; empty clears); <b>pending</b> and <b>stale</b>
-are its waiting items and the items expired unprocessed.</div>
 </section>
 
 <section data-sec="monthly">
-<h2>Channel economics — by month</h2>
 <div id="monthly"></div>
-<div class="note">The month filter replaces the old month picker; All shows every month.</div>
 </section>
 
 <section data-sec="audio">
-<h2>Audio files</h2>
 <div style="margin:0 0 8px"><button type="button" class="abtn" id="playOrder">play in table order</button></div>
 <div id="audio"></div>
-<div class="note">One row per content item that has rendered voice audio: a nugget's
-card, a post, or a video's transcript. <b>Files</b> = the mp3 pieces the item was
-cut into; <b>length</b> is hours:minutes:seconds, <b>measured</b> from the file's
-header when the render wrote it, <b>est.</b> from the character count at 15
-characters a second for the files rendered before that. <b>Created</b> = the first
-piece's date; <b>cost</b> in dollars; <b>queued by</b> = the Audio list or the
-built playlist that asked for the item; <b>played</b> = an entry for it was played.
-Each row is one item in one voice, shown in <b>voice</b> (vendor.model.voice); an
-item rendered in two voices has two rows. <b>play</b> starts the row alone, in its
-own voice; <b>play in table order</b> plays the rows the
-table shows now, after filter, sort and group, one after another. The player bar
-at the foot of the page stays across sections: pause, next, stop. An item with no
-audio files is skipped and named in the bar. <b>delete</b> (armed, with the ops
-write key) removes the item's mp3 files, its render rows, its unplayed entries in
-the Audio list and the built playlists, and its A mark in the viewer.</div>
 </section>
 
-<section data-sec="sift">
-<h2>Sift time</h2>
-<div class="note" style="margin:0 0 6px"><b>Sittings, newest first.</b> One row per
-sitting: one unbroken run of viewer events on one device; a gap longer than
-<b>sift_sitting_break_minutes</b> starts the next sitting.</div>
+<section data-sec="siftSittings">
 <div id="siftSittings"></div>
-<div class="note" style="margin:14px 0 6px"><b>Sift time by source.</b> One row per
-source and per campaign phrase, as peers.</div>
+</section>
+
+<section data-sec="siftSources">
 <div id="siftSources"></div>
-<div class="note">Worked out from the tap log (one row per viewer event: every
-star tap, K, list button, card opened and closed, page hidden and shown, set
-loaded); nothing here is stored. <b>Minutes sifted</b> = the time between
-neighbouring events. Time with the page hidden counts zero. A stretch longer
-than <b>sift_stretch_cap_seconds</b>, and the open last stretch of a sitting,
-count as <b>sift_fill_seconds</b> and are shown again under <b>filled</b>: that
-part is a stand-in, not a measurement. <b>Taps</b> = presses on a star row, K or
-a list button. A stretch belongs to the item it ends on; the stretch after an
-item's last tap stays with that item until the next item's first tap or until
-the page is hidden, so reading a new item's title is credited one item back.
-The counts in the second table (rated at tier two and tier three, K, 5★ to 1–2★)
-are the last logged value per nugget since the tap log began, the same window as
-the minutes; ratings made before the log are not in them. <b>Median tier-three</b> =
-the middle length, in seconds, of the stretches spent with a card open, filled
-ones left out. The two per-hour columns are provisional best guesses, to be
-confirmed and tuned once 300 rating taps are logged.</div>
 </section>
 
 <section data-sec="knobs">
-<h2>Pipeline parameters — yt_params</h2>
 <div class="twrap"><table id="knobs"></table></div>
-<div class="note">Every live number the pipeline runs on, grouped by what it
-governs; the next run picks changes up, no redeploy. The bold name is the
-row's <code>key</code> — search the page or the code for it verbatim. Rows
-marked ✎ are editable here: click the value, enter the ops write key once per
-session (kept in this tab only, never stored). Bounds are enforced
-server-side — the browser is never trusted. Everything else stays SQL-editor
-only: <code>update yt_params set value = '…' where key = '…';</code>
-Every change is audited.</div>
 </section>
 
 <section data-sec="consts">
-<h2>Code constants — static, a change is a code release</h2>
 <div class="twrap"><table id="consts"></table></div>
-<div class="note">Numbers fixed in the function source (and the one platform
-limit nothing can edit), listed here so every constant the pipeline runs on
-is findable by name in one place. The name is the identifier in the code.
-Change one by editing the named function and redeploying; this listing is
-maintained by hand alongside it (2026-09-11).</div>
 </section>
 
 <div class="player" id="player" hidden>
@@ -321,20 +147,8 @@ maintained by hand alongside it (2026-09-11).</div>
   <audio id="plAudio"></audio>
 </div>
 
-<script src="https://mikegarton.github.io/table-viewer/table-viewer-v1.js"></script>
+<script src="https://mikegarton.github.io/table-viewer/table-viewer-v2.js"></script>
 <script>
-// E14: the text-size pair at the right end of the pinned bar. A device can
-// hold the previous module for up to 10 minutes after a push, so the call
-// waits for a module that has the function.
-if (window.TableViewer && TableViewer.mountTextSize) TableViewer.mountTextSize("#textSize");
-// Header offset (table-viewer spec G, ruling header-offset a, 2026-10-19): the
-// section bar's height, so every table's headers park under it while scrolling.
-// The drawn height comes back zoomed by the page's text size (E14) and the
-// headers' top is zoomed again, so it is divided by the bar's zoom.
-// The focus strip calls it too when it takes or gives back the bar's place.
-const setStickyTop = () => { const bar = document.querySelector(".secbar");
-  document.documentElement.style.setProperty("--tv-sticky-top", bar.getBoundingClientRect().height / (bar.currentCSSZoom || 1) + "px"); };
-setStickyTop(); if (window.ResizeObserver) new ResizeObserver(setStickyTop).observe(document.querySelector(".secbar"));
 const BASE = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-review";
 // Key from ?key= once, then this device's localStorage (cr_review_key — shared
 // with the viewer and capture surfaces) so the installed N-ops app (RV-031)
@@ -352,94 +166,161 @@ function esc(s) {
 }
 const fmt = (v, d) => v == null ? "—" : Number(v).toFixed(d);
 
-// ---- sections (spec E1): page order = selector order; the choice is kept per device ----
-const SECTIONS = [
-  ["limits", "Limits & burn"],
-  ["feed", "Feed health — RSS fetch failures"],
-  ["yield", "Campaign yield by query"],
-  ["sources", "Sources — priority & economics"],
-  ["tags", "Category tags — coverage & TTL"],
-  ["totals", "Channel economics — lifetime"],
-  ["monthly", "Channel economics — by month"],
-  ["audio", "Audio files"],
-  ["sift", "Sift time"],
-  ["knobs", "Pipeline parameters — yt_params"],
-  ["consts", "Code constants"],
+// ---- entries (table-viewer spec B and E17, ruling module-page-split a): one per
+// table, in chooser order, plus the two sections that are the page's own
+// (ruling page-own-entries a); each entry's notes by category (ruling
+// ops-table-notes a), drafted for Mike's review. The module draws the top row,
+// the controls status, the chooser, the saved views and focus mode.
+const SIFT_TIME = { category: "Where the time comes from", items: [
+  "Worked out from the tap log (one row per viewer event: every star tap, K, list button, card opened and closed, page hidden and shown, set loaded); nothing here is stored.",
+  "Minutes sifted = the time between neighbouring events; time with the page hidden counts zero.",
+  "A stretch longer than sift_stretch_cap_seconds, and the open last stretch of a sitting, count as sift_fill_seconds and are shown again under filled: that part is a stand-in, not a measurement.",
+  "Taps = presses on a star row, K or a list button.",
+  "A stretch belongs to the item it ends on; the stretch after an item's last tap stays with that item until the next item's first tap or until the page is hidden, so reading a new item's title is credited one item back.",
+] };
+const ENTRIES = [
+  ["limits", "Limits & burn", [
+    { category: "Reading a row", items: [
+      "Each row names the resource being consumed and the consumer.",
+      "Projected at reset = share of quota used ÷ share of the period elapsed: a straight-line projection of where the period ends.",
+      "The tick on each bar marks where \"exactly on pace\" would be right now." ] },
+    { category: "Colours", items: [
+      "Blue under 50% · green 50–75% · yellow 75–90% · orange 90–100% · red 100% or more.",
+      "The database-size row has no growth history to project from, so it shows the share used now in the same five colours and has no tick." ] },
+    { category: "Types", items: [
+      "expires = a prepaid allotment; unused value is lost at reset.",
+      "ceiling = a do-not-exceed cap.",
+      "metered = pay-per-use judged against a chosen budget; nothing blocks at it." ] },
+    { category: "Campaigns", items: [
+      "A campaign and each of its phrases hold one of draft, active, stopped; a phrase is searched only while it and its campaign are both active.",
+      "stop campaign sets the campaign to stopped and stops every active phrase of it with one shared stamp; its waiting videos are not processed while it is stopped.",
+      "start campaign sets it to active and restarts exactly the phrases that stamp stopped (viewer headers show a stopped phrase as Stopped).",
+      "The campaign sheet changes the same words." ] } ]],
+  ["feed", "Feed health — RSS fetch failures", [
+    { category: "Rows", items: [
+      "One row per UTC day, from the hourly poller's sweep log (since 2026-09-28; before that a failed feed left no record).",
+      "A full UTC day holds 24 sweeps, so a day with fewer lost a sweep entirely (the run was killed before it could log); today's row is partial." ] },
+    { category: "Feeds failed all day", items: [
+      "The headline: feeds that failed in every sweep of the day, so no sweep read them; shown in yellow.",
+      "A feed that fails some hours and is read in others is a delay, not a loss (YouTube refused every channel feed between 22:00 and 07:00 UTC through 2026-10-19)." ] },
+    { category: "Counts", items: [
+      "A fetch is one channel's feed in one sweep.",
+      "Failed = still failing after the one retry (10 s timeout, 2 s pause, no retry of a 404; see Pipeline parameters).",
+      "Retry saved = failed once, fetched on the retry.",
+      "Rescued by API = a YouTube feed that answered 404 and was read instead from the channel's uploads playlist through the YouTube API, one quota unit each (since 2026-10-25); not counted as failed. YouTube still refuses most channel feeds from about 00:00 to 07:00 UTC, so a full day shows about 150 to 170 of these." ] },
+    { category: "Where the detail is", items: [
+      "The failing channels and their HTTP status are in yt_feed_sweeps.failures." ] } ]],
+  ["yield", "Campaign yield by query", [
+    { category: "Columns", items: [
+      "Prime indicators first: nug/item, nug/$ and nug/kw; cost is every call cost of the videos that query found.",
+      "Then the funnel: found → screened out or promoted → processed → nuggets → your ratings." ] },
+    { category: "When to stop a query", items: [
+      "A query with finds but no ≥4★ after a couple of weeks is a candidate for stopping (the stop-phrase button on its headers in the viewer)." ] },
+    { category: "Status words", items: [
+      "Phrase status and campaign status are the words the database holds: draft, active or stopped.",
+      "A phrase is searched only while both are active." ] } ]],
+  ["sources", "Sources — priority & economics", [
+    { category: "Priority", items: [
+      "One integer per method of acquisition; lower is processed sooner; ties allowed; the queue's tie-break is newest-published.",
+      "Manual adds jump to priority 0 for the first 3 per hour.",
+      "Editable here with the ops write key (the priority button)." ] },
+    { category: "Columns", items: [
+      "Enabled says whether the source is read at all." ] },
+    { category: "Provenance", items: [
+      "Sources are subscribed or discovered: provenance, not quality; nuggets are rated on merit." ] } ]],
+  ["tags", "Category tags — coverage & TTL", [
+    { category: "Tags", items: [
+      "Nuggets carry ordered category tags, primary first (since 2026-08-06; older nuggets show their legacy type instead).",
+      "Primary is the tag in position one, the only tag counted where totals must equal sums, like cost attribution." ] },
+    { category: "Coverage", items: [
+      "Coverage = the share of categorized nuggets carrying the tag in any position; because tags are multiple, coverage sums exceed 100% by design.",
+      "A tag above about 60% coverage presumptively isn't earning its keep, unless it stratifies (rare on most sources, dominant on a few; filter on it in the viewer and see whether it separates channels). A human call, not a rule; the yellow figure is the flag." ] },
+    { category: "TTL", items: [
+      "TTL is the tag's soft-expiry window: unrated nuggets outlive the longest TTL among their tags and drop out of open (rows kept; the viewer's Expired chip lists them; rating a nugget exempts it for good).",
+      "TTL edits are SQL-editor only: update yt_categories set ttl_days = … where key = '…';" ] } ]],
+  ["totals", "Channel economics — lifetime", [
+    { category: "Columns", items: [
+      "Identity, then prime value rates, then quality scores, then volume." ] },
+    { category: "Cost and counts", items: [
+      "Cost = Claude tokens + prorated Supadata credits, from the call log.",
+      "Nugget counts are surviving nuggets.",
+      "Channels processed before 2026-07-25 predate cost logging and show $0 (per-dollar rates blank).",
+      "The ratios are computed in the database views since 2026-09-22." ] },
+    { category: "Rates", items: [
+      "Value rates are per dollar, nug/$ and 5★/$, because substack costs run magnitudes below video costs and nuggets per dollar compares cleanly; bigger is better, like every density column.",
+      "nug/mo = surviving nuggets ÷ months since the channel's first processed item (denominator floored at 1 month).",
+      "nug/item and nug/kw (nuggets per 1,000 words of transcript or post) are the density metrics both sources share; nug/kw counts only items processed since word counting began (2026-07-30), on both sides of the ratio.",
+      "Substack transcript and minutes columns are legitimately blank." ] },
+    { category: "Scores", items: [
+      "taste = the AI's guess at your interest (0–100).",
+      "mentor = the AI's outside-expert value-per-time score (0–100).",
+      "pk, med and avg = peak, median and average over surviving nuggets.",
+      "hype (−5 to +5) is per scored video, including zero-nugget ones." ] },
+    { category: "Channel states", items: [
+      "A channel is subscribed, not subscribed or blocked; its label carries the word when it is not subscribed.",
+      "Channels not subscribed are campaign discoveries or manual-add hosts, not part of the subscribed poll list.",
+      "A blocked channel is skipped by the poller, campaign discovery and the pending queue." ] },
+    { category: "Buttons and edits", items: [
+      "Subscribe appears on YouTube channels that are not subscribed; the two unsub buttons on subscribed channels: nuggets stops the feed, YouTube unsubscribes the account.",
+      "Block (armed, with the ops write key) puts a channel in the blocked state from any other; unblock returns a blocked channel to not subscribed.",
+      "cap/wk and priority are the channel's weekly cap and processing priority (✎ = editable here with the ops write key; empty clears); pending and stale are its waiting items and the items expired unprocessed." ] } ]],
+  ["monthly", "Channel economics — by month", [
+    { category: "Months", items: [
+      "The month filter replaces the old month picker; All shows every month." ] } ]],
+  ["audio", "Audio files", [
+    { category: "Rows", items: [
+      "One row per content item that has rendered voice audio: a nugget's card, a post, or a video's transcript.",
+      "Each row is one item in one voice, shown in voice (vendor.model.voice); an item rendered in two voices has two rows." ] },
+    { category: "Columns", items: [
+      "Files = the mp3 pieces the item was cut into.",
+      "Length is hours:minutes:seconds, measured from the file's header when the render wrote it, est. from the character count at 15 characters a second for the files rendered before that.",
+      "Created = the first piece's date; cost in dollars.",
+      "Queued by = the Audio list or the built playlist that asked for the item; played = an entry for it was played." ] },
+    { category: "Playing", items: [
+      "play starts the row alone, in its own voice.",
+      "play in table order plays the rows the table shows now, after filter, sort and group, one after another.",
+      "The player bar at the foot of the page stays across tables: pause, next, stop. An item with no audio files is skipped and named in the bar." ] },
+    { category: "Deleting", items: [
+      "delete (armed, with the ops write key) removes the item's mp3 files, its render rows, its unplayed entries in the Audio list and the built playlists, and its A mark in the viewer." ] } ]],
+  ["siftSittings", "Sift time — sittings", [
+    { category: "Rows", items: [
+      "Sittings, newest first: one row per sitting, one unbroken run of viewer events on one device; a gap longer than sift_sitting_break_minutes starts the next sitting." ] },
+    SIFT_TIME ]],
+  ["siftSources", "Sift time — by source", [
+    { category: "Rows", items: [
+      "One row per source and per campaign phrase, as peers." ] },
+    SIFT_TIME,
+    { category: "Counts", items: [
+      "Rated at tier two and tier three, K, and 5★ to 1–2★ are the last logged value per nugget since the tap log began, the same window as the minutes; ratings made before the log are not in them.",
+      "Median tier-three = the middle length, in seconds, of the stretches spent with a card open, filled ones left out.",
+      "The two per-hour columns are provisional best guesses, to be confirmed and tuned once 300 rating taps are logged." ] } ]],
+  ["knobs", "Pipeline parameters — yt_params", [
+    { category: "What this is", items: [
+      "Every live number the pipeline runs on, grouped by what it governs; the next run picks changes up, no redeploy.",
+      "The bold name is the row's key; search the page or the code for it verbatim." ] },
+    { category: "Editing", items: [
+      "Rows marked ✎ are editable here: click the value, enter the ops write key once per session (kept in this tab only, never stored).",
+      "Bounds are enforced server-side; the browser is never trusted.",
+      "Everything else stays SQL-editor only: update yt_params set value = '…' where key = '…';",
+      "Every change is audited." ] } ]],
+  ["consts", "Code constants", [
+    { category: "What this is", items: [
+      "Numbers fixed in the function source (and the one platform limit nothing can edit), listed so every constant the pipeline runs on is findable by name in one place.",
+      "The name is the identifier in the code." ] },
+    { category: "Changing one", items: [
+      "Edit the named function and redeploy; this listing is maintained by hand alongside it (2026-09-11)." ] } ]],
 ];
-const SEC_STORE = "tv:ops:section";
-const secSel = document.getElementById("secSel");
-// The chooser has no label; it reads "select table" until a section is chosen
-// on this device, then shows the chosen name and reopens on it (spec E1,
-// ruling table-chooser-reopen b).
-secSel.innerHTML = '<option value="" disabled hidden>select table</option>' +
-  SECTIONS.map(([k, t]) => '<option value="' + k + '">' + esc(t) + "</option>").join("");
-function showSection(k) {
-  if (!SECTIONS.some(([s]) => s === k)) k = "";
-  document.querySelectorAll("section").forEach((s) => s.classList.toggle("on", !!k && s.dataset.sec === k));
-  secSel.value = k;
-  if (k) { try { localStorage.setItem(SEC_STORE, k); } catch (e) {} }
-  window.scrollTo(0, 0);
-  applyFocus();
-}
-secSel.onchange = () => showSection(secSel.value);
-
-// ---- focus strip (spec E16, ruling ops-focus-strip a; viewer-spec §14) ----
-// The focus chip folds every table's controls and turns the bar into the
-// strip: the controls chip and the mode chip fixed, then the subset (where,
-// order, view), dragged sideways. The strip's text is read-only and a tap on
-// it opens the controls; the fold chip and the text-size pair are the same
-// actions, live. Both choices are kept per device and restored at load.
-const FOCUS_STORE = "tv:ops:focus", MODE_STORE = "tv:ops:strip_mode", MODES = ["where", "order", "view"];
-const bar = document.querySelector(".secbar"), stripSub = document.getElementById("stripSub");
-const focusChip = document.getElementById("focusChip"), modeChip = document.getElementById("modeChip"), textSizeEl = document.getElementById("textSize");
-let uiFocus = (() => { try { return localStorage.getItem(FOCUS_STORE) === "1"; } catch (e) { return false; } })();
-let stripMode = (() => { try { const m = localStorage.getItem(MODE_STORE); return MODES.includes(m) ? m : "where"; } catch (e) { return "where"; } })();
-const shownTables = () => [...document.querySelectorAll("section.on .tv")].map((el) => mounts[el.id]).filter((m) => m && m.summaryTblVwr);
-function setFocus(on) { uiFocus = on; try { localStorage.setItem(FOCUS_STORE, on ? "1" : "0"); } catch (e) {} applyFocus(); }
-function applyFocus() {
-  const chosen = !!secSel.value;                                  // pre: a section is chosen
-  focusChip.disabled = !chosen;
-  document.documentElement.classList.toggle("tv-focus", uiFocus && chosen);
-  renderStrip(); setStickyTop();
-}
-function renderStrip() {
-  if (!(uiFocus && secSel.value)) { if (textSizeEl.parentNode !== bar) bar.appendChild(textSizeEl); return; }
-  modeChip.textContent = stripMode;
-  if (stripMode === "view") { stripSub.replaceChildren(textSizeEl); return; }
-  if (textSizeEl.parentNode !== bar) bar.appendChild(textSizeEl);
-  const tables = shownTables(), many = tables.length > 1;
-  const secName = (SECTIONS.find(([k]) => k === secSel.value) || [, ""])[1];
-  let h = "";
-  if (stripMode === "where") {
-    h = '<span class="stxt"><b>' + esc(secName) + "</b></span>";
-    for (const t of tables) {
-      const s = t.summaryTblVwr();
-      h += '<span class="stxt">' + (many ? esc(s.name) + ": " : "") + "<b>" + s.shown.toLocaleString() + "</b> of " + s.rows.toLocaleString() + " rows" +
-        s.filters.map((f) => " · " + esc(f)).join("") + "</span>";
-    }
-  } else {
-    tables.forEach((t, i) => {
-      const s = t.summaryTblVwr();
-      h += '<span class="stxt">' + (many ? esc(s.name) + ": " : "") + esc(s.order) + (s.group ? " · " + esc(s.group) : "") + "</span>";
-      if (s.grouped) h += '<button type="button" class="chip" data-fold="' + i + '">' + (s.folded ? "expand" : "collapse") + "</button>";
-    });
-    if (!tables.length) h = '<span class="stxt">' + esc(secName) + "</span>";
-  }
-  stripSub.innerHTML = h;
-  stripSub.querySelectorAll(".stxt").forEach((el) => { el.onclick = () => setFocus(false); });
-  stripSub.querySelectorAll("button[data-fold]").forEach((b) => { b.onclick = () => tables[Number(b.dataset.fold)].foldTblVwr(); });
-}
-focusChip.onclick = () => setFocus(true);
-document.getElementById("ctlChip").onclick = () => setFocus(false);
-modeChip.onclick = () => { stripMode = MODES[(MODES.indexOf(stripMode) + 1) % MODES.length]; try { localStorage.setItem(MODE_STORE, stripMode); } catch (e) {} renderStrip(); };
-if (window.TableViewer && TableViewer.onRenderTblVwr) TableViewer.onRenderTblVwr(() => renderStrip());
-showSection((() => { try { return localStorage.getItem(SEC_STORE) || ""; } catch (e) { return ""; } })());
-// Saved views (table-viewer spec E15, rulings of 2026-10-22): the View dropdown,
-// save view and delete view after the section selector; a view names its table
-// and the section it sits in (each spec's section below), so choosing one
-// switches the section and restores that table's settings. Guarded like the
-// text-size call: a device can hold the previous module for up to 10 minutes.
-if (window.TableViewer && TableViewer.mountViewsTblVwr) TableViewer.mountViewsTblVwr("#views", { site: "ops", showSectionTblVwr: showSection });
+// The player bar's height while it shows, so the module's corner buttons sit
+// above it (ruling corner-buttons-player a).
+const setBottomInset = () => { const b = document.getElementById("player");
+  document.documentElement.style.setProperty("--tv-bottom-inset", b && !b.hidden ? b.getBoundingClientRect().height / (b.currentCSSZoom || 1) + "px" : "0px"); };
+// A device can hold the previous module for up to 10 minutes after a push, so
+// the call waits for a module that has the function.
+if (window.TableViewer && TableViewer.mountPageTblVwr) TableViewer.mountPageTblVwr("#opsTop", {
+  site: "ops", title: "Nugget ops",
+  about: "limits, feed health, campaign yields, sources, tags, channel economics, audio files, sift time and the pipeline's numbers.",
+  entries: ENTRIES.map(([key, name, notes]) => ({ key, name, notes, el: document.querySelector('section[data-sec="' + key + '"]') })),
+});
 
 // ---- requests for the action cells (spec E12, E13, I) ----
 function getOpsKey() {
@@ -711,7 +592,7 @@ const SPECS = {
     ] },
   // Sift time (tap log, 2026-09-30): both tables read views worked out from
   // yt_viewer_events. Column order = the tap-log spec's section 6.
-  siftSittings: { name: "sift-sittings", site: "ops", section: "sift", identity: "sitting", sort: { key: "sitting", dir: "desc" },
+  siftSittings: { name: "sift-sittings", site: "ops", section: "siftSittings", identity: "sitting", sort: { key: "sitting", dir: "desc" },
     columns: [
       { key: "sitting", label: "sitting started (UTC)" },
       { key: "sift_minutes", label: "minutes sifted", decimals: 1 },
@@ -727,7 +608,7 @@ const SPECS = {
       { key: "device_id", visible: false },
       { key: "sitting_started_at", visible: false },
     ] },
-  siftSources: { name: "sift-by-source", site: "ops", section: "sift", identity: "ident", sort: { key: "sift_minutes", dir: "desc" },
+  siftSources: { name: "sift-by-source", site: "ops", section: "siftSources", identity: "ident", sort: { key: "sift_minutes", dir: "desc" },
     columns: [
       { key: "ident", label: "source or phrase" },
       { key: "row_kind", label: "kind" },
@@ -789,7 +670,7 @@ function playUnits(rows) {
     voice: voiceObj(r.voice), voiceText: r.voice || "" }));
   if (!queue.length) return;
   player.queue = queue; player.skipped = []; player.paused = false; player.on = true;
-  plEl.bar.hidden = false; document.body.classList.add("playing");
+  plEl.bar.hidden = false; document.body.classList.add("playing"); setBottomInset();
   plEl.pause.disabled = plEl.next.disabled = false;
   plStart(0);
 }
@@ -842,7 +723,7 @@ plEl.next.onclick = () => { if (player.on) plStart(player.i + 1); };
 plEl.stop.onclick = () => {
   player.gen++; player.on = false; player.queue = []; player.i = -1;
   plEl.audio.pause(); plEl.audio.removeAttribute("src"); plEl.audio.load();
-  plEl.bar.hidden = true; document.body.classList.remove("playing");
+  plEl.bar.hidden = true; document.body.classList.remove("playing"); setBottomInset();
 };
 document.getElementById("playOrder").onclick = () => {
   const h = mounts.audio;
