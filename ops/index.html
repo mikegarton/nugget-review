@@ -395,15 +395,8 @@ const TOTAL_COLS = [
   { key: "stale_total", label: "stale", decimals: 0 },
   { key: "kwords", visible: false, label: "kwords", decimals: 2 },
   { key: "first_processed_at", visible: false, label: "first processed" },
-  // The entity join copies yt_channels' columns beside the view's; these are
-  // its copies of columns the view already carries (ruling state-column-simplify a,
-  // 2026-10-29), kept hidden. channel_enabled went with the enabled column.
-  { key: "channel_enabled", visible: false },
-  { key: "channel_sub_state", visible: false },
-  { key: "channel_label", visible: false },
-  { key: "channel_source", visible: false },
-  { key: "channel_weekly_cap", visible: false },
-  { key: "channel_proc_priority", visible: false },
+  // The entity join no longer copies a column the view returns (ruling
+  // entity-join-duplicates a, 2026-10-31), so no channel_ copies arrive.
 ];
 const MONTH_HIDE = new Set(["nug_per_month", "taste_peak", "taste_med", "taste_avg",
   "mentor_peak", "mentor_med", "mentor_avg", "hype_med", "hype_avg", "first_processed_at",
@@ -504,10 +497,8 @@ const SPECS = {
       { key: "cost_usd", label: "$", decimals: 2, visible: false },
       { key: "kwords", label: "kwords", decimals: 2, visible: false },
       { key: "query_id", visible: false },
-      // The entity join's copies of columns the view carries (see TOTAL_COLS):
-      // the phrase's status joins as status, its text as query_query.
-      { key: "status", visible: false },
-      { key: "query_query", visible: false },
+      // The phrase's status joins as status, a copy of query_status under
+      // another name; mountOrUpdate leaves it out (entity-join-duplicates a).
       { key: "query_active", visible: false },
       { key: "campaign_created_at", visible: false },
       { key: "campaign_sheet_extra", visible: false },
@@ -588,7 +579,6 @@ const SPECS = {
       { key: "primary_nuggets", label: "primary", decimals: 0 },
       // The fluff detector: >60% coverage is a colour, never a filter.
       { key: "coverage_pct", label: "coverage %", decimals: 1, mark: (v) => Number(v) > 60 ? "warn" : null },
-      { key: "category_ttl_days", visible: false },   // the entity join's copy of ttl_days
     ] },
   // Sift time (tap log, 2026-09-30): both tables read views worked out from
   // yt_viewer_events. Column order = the tap-log spec's section 6.
@@ -919,7 +909,7 @@ function render() {
   // it filters as an enum; sources merged with their economics. A state shows
   // once, as the database holds it (ruling state-column-simplify a, 2026-10-29):
   // the yield rows carry query_status and campaign_status, a source its enabled.
-  mountOrUpdate("yield", ops.campaign_yield || [], "campaign_yield");
+  mountOrUpdate("yield", (ops.campaign_yield || []).map(({ status, ...r }) => r), "campaign_yield");   // status repeats query_status (entity-join-duplicates a)
   const econ = new Map((ops.source_econ || []).map(s => [s.key, s]));
   mountOrUpdate("sources", (ops.sources || []).map(s => Object.assign({}, econ.get(s.key) || {}, s)), "sources");
   mountOrUpdate("feed", ops.feed_failures_daily || []);
