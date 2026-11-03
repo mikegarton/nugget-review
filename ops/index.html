@@ -153,9 +153,20 @@ const BASE = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-review";
 // Key from ?key= once, then this device's localStorage (cr_review_key — shared
 // with the viewer and capture surfaces) so the installed N-ops app (RV-031)
 // opens without a key in its start_url; the public repo forbids one there.
-const urlKey = new URLSearchParams(location.search).get("key");
-if (urlKey) localStorage.setItem("cr_review_key", urlKey);
+// The ?key= is taken out of the address once stored, and every API call
+// carries the key in the x-review-key header, never in a request address
+// (backlog item 13).
+const urlParams = new URLSearchParams(location.search);
+const urlKey = urlParams.get("key");
+if (urlKey) {
+  localStorage.setItem("cr_review_key", urlKey);
+  urlParams.delete("key");
+  const rest = urlParams.toString();
+  history.replaceState(history.state, "", location.pathname + (rest ? "?" + rest : "") + location.hash);
+}
 const KEY = urlKey || localStorage.getItem("cr_review_key");
+// The request headers for an API call: the review key plus any others given.
+function keyed(headers) { return Object.assign({ "x-review-key": KEY }, headers); }
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("../sw.js").catch(() => {});
 let ops = null;
 const mounts = {};
@@ -333,13 +344,13 @@ function getOpsKey() {
   return opsKey;
 }
 async function apiRequest(action, row, body) {
-  const headers = { "content-type": "application/json" };
+  const headers = keyed({ "content-type": "application/json" });
   if (action.opsKey) {
     const k = getOpsKey();
     if (!k) return { ok: false, status: 0, json: async () => ({ error: "no ops write key entered" }) };
     headers["x-ops-key"] = k;
   }
-  const res = await fetch(BASE + action.route + "?key=" + encodeURIComponent(KEY), {
+  const res = await fetch(BASE + action.route, {
     method: action.method || "POST", headers, body: JSON.stringify(body),
   });
   if (res.status === 401 && action.opsKey) { try { sessionStorage.removeItem("ops_write_key"); } catch (e) {} }
@@ -678,8 +689,8 @@ async function plStart(i) {
   plPaint(plWhere("loading"));
   let unit = null;
   try {
-    const res = await fetch(BASE + "/tts-urls?key=" + encodeURIComponent(KEY), {
-      method: "POST", headers: { "content-type": "application/json" },
+    const res = await fetch(BASE + "/tts-urls", {
+      method: "POST", headers: keyed({ "content-type": "application/json" }),
       body: JSON.stringify(Object.assign({ units: [{ unit_type: u.unit_type, unit_id: u.unit_id }] }, u.voice ? { voice: u.voice } : {})),
     });
     const data = await res.json();
@@ -1167,9 +1178,9 @@ async function editLever(table, key, current) {
   const opsKey = getOpsKey();
   if (!opsKey) return;
   try {
-    const res = await fetch(BASE + "/param?key=" + encodeURIComponent(KEY), {
+    const res = await fetch(BASE + "/param", {
       method: "POST",
-      headers: { "content-type": "application/json", "x-ops-key": opsKey },
+      headers: keyed({ "content-type": "application/json", "x-ops-key": opsKey }),
       body: JSON.stringify({ table, key, value: String(next).trim() }),
     });
     const data = await res.json();
@@ -1202,7 +1213,7 @@ async function editChannelParam(channelId, key, current) {
 
 async function load() {
   if (!KEY) {
-    document.body.innerHTML = '<div class="empty">Missing ?key= — open from your bookmark (same key as the viewer).</div>';
+    document.body.innerHTML = '<div class="empty">No review key on this device — save it once in the <a href="../capture/#setup">setup box</a> (the same key as the viewer), then reload this page.</div>';
     return;
   }
   // A server error is tried once more (ruling ops-heavy-views a, 2026-10-28):
@@ -1211,7 +1222,7 @@ async function load() {
   let res;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      res = await fetch(BASE + "/ops?key=" + encodeURIComponent(KEY));
+      res = await fetch(BASE + "/ops", { headers: keyed() });
     } catch (e) {
       document.getElementById("limits").innerHTML = '<tr><td class="empty">Could not reach the API.</td></tr>';
       return;

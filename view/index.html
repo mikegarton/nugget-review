@@ -230,14 +230,23 @@
 <div id="lock"><div><b>locked</b>playback continues — press and hold 1.5 s to unlock</div></div>
 <script>
 // Static shell (GitHub Pages). All data comes from the key-gated Supabase
-// function below; the key lives in the bookmark's ?key= parameter and, once
-// seen, in this device's localStorage (cr_review_key — shared with the
-// capture surfaces) so an installed app (N-view, RV-031) opens without a
-// key in its start_url.
+// function below; the key lives in this device's localStorage (cr_review_key
+// — shared with the capture surfaces) so an installed app (N-view, RV-031)
+// opens without a key in its start_url. A ?key= in the address is stored
+// there and then taken out of the address, and every API call carries the key
+// in the x-review-key header, never in a request address (backlog item 13).
 const BASE = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-review";
-const urlKey = new URLSearchParams(location.search).get("key");
-if (urlKey) localStorage.setItem("cr_review_key", urlKey);
+const urlParams = new URLSearchParams(location.search);
+const urlKey = urlParams.get("key");
+if (urlKey) {
+  localStorage.setItem("cr_review_key", urlKey);
+  urlParams.delete("key");
+  const rest = urlParams.toString();
+  history.replaceState(history.state, "", location.pathname + (rest ? "?" + rest : "") + location.hash);
+}
 const KEY = urlKey || localStorage.getItem("cr_review_key");
+// The request headers for an API call: the review key plus any others given.
+function keyed(headers) { return Object.assign({ "x-review-key": KEY }, headers); }
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("../sw.js").catch(() => {});
 
 // Controls per viewer-spec draft 6 (working_docs projects/nugget-review/
@@ -1222,10 +1231,10 @@ async function renderRead(n, pane) {
   pane.innerHTML = '<div class="ptext" style="color:var(--faint)">loading text…</div>';
   try {
     if (isPostSource(n)) {
-      const p = await (await fetch(BASE + "/post?key=" + encodeURIComponent(KEY) + "&id=" + encodeURIComponent(n.video_id))).json();
+      const p = await (await fetch(BASE + "/post?id=" + encodeURIComponent(n.video_id), { headers: keyed() })).json();
       pane.innerHTML = '<div class="ptext"><b>' + esc(p.title || n.videoTitle) + "</b>\n\n" + esc(p.text || "(no stored text — teaser-only post)") + "</div>";
     } else {
-      const t = await (await fetch(BASE + "/transcript?key=" + encodeURIComponent(KEY) + "&id=" + encodeURIComponent(n.video_id))).json();
+      const t = await (await fetch(BASE + "/transcript?id=" + encodeURIComponent(n.video_id), { headers: keyed() })).json();
       const timed = t.timed || "";
       // Open at the nugget's time: mark the first [m:ss] line at/after start.
       const start = displayStart(n) ?? 0;
@@ -1269,7 +1278,7 @@ async function renderAudio(n, pane, done) {
     // Unknown duration → the safe default is the article.
     pane.innerHTML = '<div class="ptext" style="color:var(--faint)">sizing attachment vs article…</div>';
     let p = null;
-    try { p = await (await fetch(BASE + "/post?key=" + encodeURIComponent(KEY) + "&id=" + encodeURIComponent(n.video_id))).json(); } catch (e) {}
+    try { p = await (await fetch(BASE + "/post?id=" + encodeURIComponent(n.video_id), { headers: keyed() })).json(); } catch (e) {}
     if (!PL.active || PL.items[PL.idx] !== n) return;
     const textWords = String(p?.text || "").trim().split(/\s+/).filter(Boolean).length;
     const durS = await probeAudioDuration(m.audio_url, 4000);
@@ -1322,11 +1331,11 @@ async function readEntry(n, pane, done) {
       if (n.rationale) parts.push("Coach's note: " + n.rationale.trim());
       chunks = speakable(parts.join("\n\n"));
     } else if (isPostSource(n)) {
-      const p = await (await fetch(BASE + "/post?key=" + encodeURIComponent(KEY) + "&id=" + encodeURIComponent(n.video_id))).json();
+      const p = await (await fetch(BASE + "/post?id=" + encodeURIComponent(n.video_id), { headers: keyed() })).json();
       const body = speakable(p && p.text);
       chunks = body.length ? [p.title || n.videoTitle].concat(body) : [];
     } else {
-      const res = await fetch(BASE + "/transcript?key=" + encodeURIComponent(KEY) + "&id=" + encodeURIComponent(n.video_id));
+      const res = await fetch(BASE + "/transcript?id=" + encodeURIComponent(n.video_id), { headers: keyed() });
       const t = res.ok ? await res.json() : null;
       chunks = speakable(t && (t.text || String(t.timed || "").replace(/^\[\d+:\d{2}\]\s*/gm, "")));
     }
@@ -1377,7 +1386,7 @@ function speakable(text) {
 }
 async function speakPost(n, pane, done) {
   pane.innerHTML = '<div class="ptext" id="ttsPane" style="color:var(--dim)">loading text…</div>';
-  let p; try { p = await (await fetch(BASE + "/post?key=" + encodeURIComponent(KEY) + "&id=" + encodeURIComponent(n.video_id))).json(); } catch (e) { p = null; }
+  let p; try { p = await (await fetch(BASE + "/post?id=" + encodeURIComponent(n.video_id), { headers: keyed() })).json(); } catch (e) { p = null; }
   speakChunks(n, [p?.title || n.videoTitle].concat(speakable(p?.text)), done);
 }
 // Reads chunks aloud one utterance at a time. The voice: an entry read in a stored
@@ -1427,7 +1436,7 @@ async function renderVideo(n, pane, done) {
     return;
   }
   // text as a static slide (allowed per ruling): the post body; Next advances.
-  let p; try { p = await (await fetch(BASE + "/post?key=" + encodeURIComponent(KEY) + "&id=" + encodeURIComponent(n.video_id))).json(); } catch (e) { p = null; }
+  let p; try { p = await (await fetch(BASE + "/post?id=" + encodeURIComponent(n.video_id), { headers: keyed() })).json(); } catch (e) { p = null; }
   pane.innerHTML = '<div class="ptext"><b>' + esc(p?.title || n.videoTitle) + "</b>\n\n" + esc(p?.text || "(no stored text)") + "</div>";
 }
 
@@ -1505,8 +1514,8 @@ async function playRenderedUnit(n, unit, pane, done) {
   async function refresh() {
     let u = null;
     try {
-      const res = await (await fetch(BASE + "/tts-urls?key=" + encodeURIComponent(KEY), {
-        method: "POST", headers: { "content-type": "application/json" },
+      const res = await (await fetch(BASE + "/tts-urls", {
+        method: "POST", headers: keyed({ "content-type": "application/json" }),
         body: JSON.stringify(n._voiceTrio ? { units: [unit], voice: n._voiceTrio } : { units: [unit] }),
       })).json();
       u = res && res.units && res.units[0];
@@ -1735,8 +1744,8 @@ async function builderCommit(v) {
     body.name = (d.getMonth() + 1) + "-" + d.getDate() + " " + (loadedSel.scope || "all") + " " + state.sort + " top" + items.length + " " + play + (play === "card" ? "" : " " + item_source.replace("_", "-"));
   }
   try {
-    const res = await fetch(BASE + "/builder-commit?key=" + encodeURIComponent(KEY), {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    const res = await fetch(BASE + "/builder-commit", {
+      method: "POST", headers: keyed({ "content-type": "application/json" }), body: JSON.stringify(body),
     });
     const j = await res.json();
     if (!res.ok) { msg.textContent = "error: " + (j.error || res.status); return; }
@@ -1779,8 +1788,8 @@ async function ensureBodies(ids, force) {
   for (let k = 0; k < want.length; k += 100) {
     const chunk = want.slice(k, k + 100);
     try {
-      const res = await fetch(BASE + "/bodies?key=" + encodeURIComponent(KEY), {
-        method: "POST", headers: { "content-type": "application/json" },
+      const res = await fetch(BASE + "/bodies", {
+        method: "POST", headers: keyed({ "content-type": "application/json" }),
         body: JSON.stringify({ ids: chunk }),
       });
       if (!res.ok) throw new Error("HTTP " + res.status);
@@ -1992,9 +2001,9 @@ async function subscribeCh(chId, vid) {
   const b = document.getElementById("sub-" + vid);
   if (b) { b.disabled = true; b.textContent = "…"; }
   try {
-    const res = await fetch(BASE + "/subscribe?key=" + encodeURIComponent(KEY), {
+    const res = await fetch(BASE + "/subscribe", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: keyed({ "content-type": "application/json" }),
       body: JSON.stringify({ channel_id: chId }),
     });
     const out = await res.json().catch(() => null);
@@ -2074,9 +2083,9 @@ async function unsub(vid, side) {
   const b = document.getElementById("un-" + side + "-" + vid);
   if (b) { b.disabled = true; b.textContent = "…"; }
   try {
-    const res = await fetch(BASE + "/unsubscribe?key=" + encodeURIComponent(KEY), {
+    const res = await fetch(BASE + "/unsubscribe", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: keyed({ "content-type": "application/json" }),
       body: JSON.stringify({ channel_id: n.channelId, side }),
     });
     const out = await res.json().catch(() => null);
@@ -2096,9 +2105,9 @@ async function setPhrase(vid, restart) {
   if (!n) return;
   if (b) { b.disabled = true; b.textContent = "…"; }
   try {
-    const res = await fetch(BASE + (restart ? "/restart-phrase" : "/stop-phrase") + "?key=" + encodeURIComponent(KEY), {
+    const res = await fetch(BASE + (restart ? "/restart-phrase" : "/stop-phrase"), {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: keyed({ "content-type": "application/json" }),
       body: JSON.stringify({ campaign_id: n.campaignId, query: n.campaignQuery }),
     });
     const out = await res.json().catch(() => null);
@@ -2277,16 +2286,18 @@ function dropSent(batch) {
 // result cannot be read, so the events count as sent once the browser accepts
 // the hand-over (a loss in transit leaves that sitting's last stretch to the
 // fill rule). Otherwise an ordinary request, whose failure keeps the events.
+// A beacon cannot carry a header, so its body carries the key (ruling
+// beacon-key-route a, 2026-11-02); the ordinary request sends it as a header.
 async function flushEvents(viaBeacon) {
   if (!KEY) return;
   // Events an unanswered request already carries are not sent a second time.
   const batch = inFlight ? unsentEvents.filter(e => !inFlight.includes(e)) : unsentEvents.slice();
   if (!batch.length) return;
-  const url = BASE + "/event?key=" + encodeURIComponent(KEY);
+  const url = BASE + "/event";
   const payload = JSON.stringify({ events: batch });
   if (viaBeacon && navigator.sendBeacon) {
     let accepted = false;
-    try { accepted = navigator.sendBeacon(url, payload); } catch (e) {}
+    try { accepted = navigator.sendBeacon(url, JSON.stringify({ key: KEY, events: batch })); } catch (e) {}
     if (accepted) dropSent(batch); else unsentWaiting = true;
     return;
   }
@@ -2294,7 +2305,7 @@ async function flushEvents(viaBeacon) {
   inFlight = batch;
   let ok = false;
   try {
-    const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: payload, keepalive: true });
+    const res = await fetch(url, { method: "POST", headers: keyed({ "content-type": "application/json" }), body: payload, keepalive: true });
     ok = res.ok; // stored and refused events leave alike: a refused event can never be stored
   } catch (e) {}
   inFlight = null;
@@ -2319,9 +2330,9 @@ if (unsentEvents.length) setTimeout(() => flushEvents(false), 0); // leftovers f
 // A failed save must never look like a successful one.
 async function post(path, body) {
   try {
-    const res = await fetch(BASE + path + "?key=" + encodeURIComponent(KEY), {
+    const res = await fetch(BASE + path, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: keyed({ "content-type": "application/json" }),
       // t = this device's clock, dev = its random id (tap log).
       body: JSON.stringify(Object.assign({ t: Date.now(), dev: DEVICE_ID }, body)),
     });
@@ -2435,7 +2446,7 @@ function zoomStep(dir) {
 async function load() {
   if (!KEY) {
     document.getElementById("list").innerHTML =
-      '<div class="empty">Missing ?key= in the URL — open this page from your bookmark once; this device remembers it afterwards.</div>';
+      '<div class="empty">No review key on this device — save it once in the <a href="../capture/#setup">setup box</a>, then reload this page.</div>';
     return;
   }
   // Old saved Source values (channel labels) predate the ch:<id> encoding.
@@ -2447,7 +2458,7 @@ async function load() {
   try { const c = localStorage.getItem("ytr3_facets"); if (c) facets = JSON.parse(c); } catch (e) {}
   render();
   let res;
-  try { res = await fetch(BASE + "/facets?key=" + encodeURIComponent(KEY)); }
+  try { res = await fetch(BASE + "/facets", { headers: keyed() }); }
   catch (e) { if (!facets) document.getElementById("list").innerHTML = '<div class="empty">Could not reach the nugget API.</div>'; return; }
   if (!res.ok) {
     if (!facets) document.getElementById("list").innerHTML =
@@ -2466,8 +2477,8 @@ async function loadData() {
   loading = true; render();
   let res;
   try {
-    res = await fetch(BASE + "/data?key=" + encodeURIComponent(KEY) +
-      "&scope=" + encodeURIComponent(sel.scope || "all") + "&source=" + encodeURIComponent(sel.src));
+    res = await fetch(BASE + "/data?scope=" + encodeURIComponent(sel.scope || "all") +
+      "&source=" + encodeURIComponent(sel.src), { headers: keyed() });
   } catch (e) {
     loading = false; render();
     document.getElementById("list").innerHTML = '<div class="empty">Could not reach the nugget API.</div>';

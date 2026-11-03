@@ -104,18 +104,22 @@ bookmarks and an old N-add's share action keep working.
   green N+O = N-ops.
 
 It contains no data and no secrets: all data comes from the pipeline's
-key-gated `yt-review` Supabase function (JSON, CORS-enabled). The key
-arrives once via the bookmark's `?key=` parameter and is then kept in the
-device's browser localStorage (`cr_review_key`, shared by all pages), so
-the installed apps open without a key in any start_url — the public repo
-forbids one there.
+key-gated `yt-review` Supabase function (JSON, CORS-enabled). The key is
+saved once per device in the capture page's setup box (`capture/#setup`)
+and kept in the browser's localStorage (`cr_review_key`, shared by all
+pages), so the installed apps open without a key in any start_url — the
+public repo forbids one there. Every API call sends it in the
+`x-review-key` header (the viewer's page-hidden beacon, which cannot set a
+header, in the body of its /event request); it never goes in an address.
+A page opened with an old `?key=` still saves it and takes it out of the
+address.
 
 Why Pages: Supabase's gateway rewrites any `text/html` response from
 `*.supabase.co` to `text/plain` with a sandbox CSP, so the shell cannot be
 served next to the API.
 
-Bookmark: `https://mikegarton.github.io/nugget-review/view/?key=<YT_REVIEW_KEY>`
-(the old root URL redirects there). Clips: `…/nugget-review/view/clips.html`;
+Bookmark: `https://mikegarton.github.io/nugget-review/view/` (the old root
+URL redirects there). Clips: `…/nugget-review/view/clips.html`;
 ops: `…/nugget-review/ops/`; capture how-to: `…/nugget-review/capture/`.
 
 ## The review loop (2026-08-22)

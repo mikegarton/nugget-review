@@ -74,7 +74,7 @@ answer is shown either way.</p>
     <b>Developer mode</b> (top right).</li>
   <li>Click <b>Load unpacked</b> and pick the <code>extension</code> folder.</li>
   <li>Click the extension's <b>Details &rarr; Extension options</b> and paste the
-    <b>review key</b> (the same key as the nugget viewer bookmark — not the ops
+    <b>review key</b> (the key the viewer and the ops page use — not the ops
     write key). Save.</li>
 </ol>
 
@@ -113,9 +113,9 @@ surface.</p>
 
 <div class="box" id="setup">
   <b>Review key — save once per device</b>
-  <p class="note">The key from your nugget viewer bookmark (not the ops write
-  key). Stored in this browser's local storage only — read by the share
-  handler when you send a video.</p>
+  <p class="note">The review key (not the ops write key). Stored in this
+  browser's local storage only — read by the share handler when you send a
+  video, and by the viewer and the ops page; it never goes in an address.</p>
   <input type="password" id="in-key" placeholder="review key"
     style="width:100%;padding:9px 10px;font:inherit;margin:6px 0;
     border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)">
@@ -148,8 +148,8 @@ surface.</p>
 beside the gold N-add. Each app lives in its own folder with its own
 manifest scope (<code>capture/</code>, <code>view/</code>, <code>ops/</code>)
 — Chrome treats overlapping scopes as ONE app, which is why the three
-were separated 2026-08-23. Open each page once from its <code>?key=</code>
-bookmark on the phone (the page remembers the key on that device), then
+were separated 2026-08-23. Save the review key in the setup box above on
+the phone first (the viewer and ops page read it there), open each page, then
 Chrome menu (&#8942;) &rarr; <b>Add to Home screen</b> &rarr; <b>Install</b>.
 An N-add installed before 2026-08-23 carries the old whole-site scope:
 uninstall it once and reinstall from this page, or the others will keep
