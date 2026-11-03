@@ -232,19 +232,19 @@
 // Static shell (GitHub Pages). All data comes from the key-gated Supabase
 // function below; the key lives in this device's localStorage (cr_review_key
 // — shared with the capture surfaces) so an installed app (N-view, RV-031)
-// opens without a key in its start_url. A ?key= in the address is stored
-// there and then taken out of the address, and every API call carries the key
-// in the x-review-key header, never in a request address (backlog item 13).
+// opens without a key in its start_url; the key is saved in the capture page's
+// setup box. A ?key= in the address, from an old bookmark, is taken out of the
+// address and never saved, so it cannot overwrite the device's key (ruling
+// url-key-intake a); every API call carries the key in the x-review-key
+// header, never in a request address (backlog item 13).
 const BASE = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-review";
 const urlParams = new URLSearchParams(location.search);
-const urlKey = urlParams.get("key");
-if (urlKey) {
-  localStorage.setItem("cr_review_key", urlKey);
+if (urlParams.has("key")) {
   urlParams.delete("key");
   const rest = urlParams.toString();
   history.replaceState(history.state, "", location.pathname + (rest ? "?" + rest : "") + location.hash);
 }
-const KEY = urlKey || localStorage.getItem("cr_review_key");
+const KEY = localStorage.getItem("cr_review_key");
 // The request headers for an API call: the review key plus any others given.
 function keyed(headers) { return Object.assign({ "x-review-key": KEY }, headers); }
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("../sw.js").catch(() => {});

@@ -3,8 +3,8 @@
 <!-- The lists (Audio / Video / Read) are a MODE of the viewer since
      2026-08-23 (viewer-spec §13): same widgets, same sort, the player bar
      appears when the Listed dropdown selects a list. This stub forwards old
-     links into the viewer with the Audio list preselected; the key travels
-     in the query string. -->
+     links into the viewer with the Audio list preselected; the query string
+     is carried over, and the viewer drops any ?key= in it unsaved. -->
 <script>
   const q = new URLSearchParams(location.search);
   if (!q.get("listed")) q.set("listed", "audio");

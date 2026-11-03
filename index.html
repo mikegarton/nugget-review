@@ -3,7 +3,8 @@
 <!-- The viewer moved to view/ on 2026-08-23 so each installable app (N-add,
      N-view, N-ops) has its own manifest scope — Chrome treats overlapping
      scopes as one app. This stub keeps the old bookmark working; the query
-     string (?key=) and hash are carried over. -->
+     string and hash are carried over, and the viewer drops any ?key= in it
+     unsaved. -->
 <script>location.replace("view/" + location.search + location.hash);</script>
 </head><body style="background:#101114;color:#9a9da5;font:15px system-ui;padding:20px">
 <a href="view/" style="color:#5aa8f0">The viewer moved to view/ — tap to continue.</a>

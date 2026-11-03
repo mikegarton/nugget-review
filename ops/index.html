@@ -150,21 +150,20 @@
 <script src="https://mikegarton.github.io/table-viewer/table-viewer-v2.js"></script>
 <script>
 const BASE = "https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-review";
-// Key from ?key= once, then this device's localStorage (cr_review_key — shared
-// with the viewer and capture surfaces) so the installed N-ops app (RV-031)
-// opens without a key in its start_url; the public repo forbids one there.
-// The ?key= is taken out of the address once stored, and every API call
-// carries the key in the x-review-key header, never in a request address
-// (backlog item 13).
+// Key from this device's localStorage only (cr_review_key — shared with the
+// viewer and capture surfaces, saved in the capture page's setup box) so the
+// installed N-ops app (RV-031) opens without a key in its start_url; the
+// public repo forbids one there. A ?key= in the address, from an old bookmark,
+// is taken out of the address and never saved, so it cannot overwrite the
+// device's key (ruling url-key-intake a); every API call carries the key in
+// the x-review-key header, never in a request address (backlog item 13).
 const urlParams = new URLSearchParams(location.search);
-const urlKey = urlParams.get("key");
-if (urlKey) {
-  localStorage.setItem("cr_review_key", urlKey);
+if (urlParams.has("key")) {
   urlParams.delete("key");
   const rest = urlParams.toString();
   history.replaceState(history.state, "", location.pathname + (rest ? "?" + rest : "") + location.hash);
 }
-const KEY = urlKey || localStorage.getItem("cr_review_key");
+const KEY = localStorage.getItem("cr_review_key");
 // The request headers for an API call: the review key plus any others given.
 function keyed(headers) { return Object.assign({ "x-review-key": KEY }, headers); }
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("../sw.js").catch(() => {});
