@@ -122,7 +122,11 @@ surface.</p>
   <button onclick="saveKey()"
     style="font:inherit;border:none;border-radius:8px;padding:9px 14px;
     background:var(--blue);color:var(--bg);cursor:pointer">Save key on this device</button>
+  <button onclick="testKey()"
+    style="font:inherit;border:1px solid var(--blue);border-radius:8px;padding:8px 14px;
+    background:none;color:var(--blue);cursor:pointer">Test saved key</button>
   <div class="note" id="key-status"></div>
+  <div class="note" id="key-test"></div>
 </div>
 
 <h3>Use</h3>
@@ -224,6 +228,28 @@ function saveKey() {
   try { localStorage.setItem("cr_review_key", k); } catch (e) {}
   document.getElementById("in-key").value = "";
   document.getElementById("key-status").textContent = "Saved on this device.";
+}
+// Reports the saved key's form, a fingerprint (the first 8 hex characters of
+// its SHA-256, to compare with the vault's copy) and yt-review's answer to a
+// read sent with it, without showing the key.
+async function testKey() {
+  const out = document.getElementById("key-test");
+  let k = null;
+  try { k = localStorage.getItem("cr_review_key"); } catch (e) {}
+  if (!k) { out.textContent = "No review key is saved in this browser."; return; }
+  out.textContent = "Testing…";
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(k));
+  const fp = Array.from(new Uint8Array(d)).slice(0, 4)
+    .map(b => b.toString(16).padStart(2, "0")).join("");
+  let ans;
+  try {
+    ans = (await fetch("https://zowilxlpldqxtotrvekd.supabase.co/functions/v1/yt-review/facets",
+      { headers: { "x-review-key": k } })).status;
+  } catch (e) { ans = "no answer (" + e.message + ")"; }
+  out.textContent = "Saved key: " + k.length + " characters, " +
+    (/^[0-9a-f]{64}$/.test(k) ? "plain hex" : "not plain hex") +
+    ", fingerprint " + fp + ". Server: " +
+    (ans === 200 ? "200, accepted." : ans === 401 ? "401, rejected." : ans + ".");
 }
 try {
   if (localStorage.getItem("cr_review_key"))
