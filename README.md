@@ -202,7 +202,20 @@ zone; frequency orders the rest; utilities last.
 - **Row 3 — judgment + utilities**: Rating (All · Unrated · 5★ · ≥4★ · 3★ ·
   Pickled 1–2★) · Expired (hidden / shown; re-admits unrated nuggets past
   their categories' TTL — each wears "expired: <tag> <N>d" naming the tag
-  whose TTL fired) · A− / A+.
+  whose TTL fired) · Search · A− / A+.
+- **Search group (row 3, 2026-11-09)**: a text field with two buttons. **Aa**
+  (or Enter) runs a Words search through yt-review's `/search` (exact words in
+  the headline and abstract; quotes make a phrase, a leading minus excludes, OR
+  between words). **≈** runs a Meaning search against the laptop's search
+  server (the closest 200 by sense). **include mod-rat** widens both to the
+  model's rationale. The hits are a filter like the others: every other
+  filter and count applies inside them. A Meaning search sets Sort to
+  **Meaning** (closest first) and gives back your Sort when cleared; **✕**
+  clears. The text, kind and toggle are saved with the other filters and the
+  search runs again on reload. The Meaning server address defaults to
+  `http://localhost:8765`; the capture page's setup box has a "Meaning server
+  address" field (`localStorage` `cr_meaning_url`) for reaching the laptop from
+  another device.
 - **Chip fills**: grey = app default; mint = your choice (a value equal to
   the default reads grey); yellow = a side-effect of another control
   (decays when you touch this one); greyed = not applicable.

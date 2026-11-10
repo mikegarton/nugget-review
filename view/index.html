@@ -54,6 +54,10 @@
      of another control (decays when the user touches this one), greyed =
      inapplicable. Applies to selects and buttons alike. */
   .ctl .user-set { border-color: var(--mint); color: var(--mint); }
+  .ctl.search .srow { display: flex; gap: 4px; align-items: center; }
+  .ctl.search input { background: var(--card); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 16px; padding: 6px 12px; font-size: 14px; max-width: 30vw; }
+  .ctl.search .qstat { font-size: 11px; color: var(--faint); white-space: nowrap; }
   .ctl .side-effect { border-color: var(--yellow); color: var(--yellow); }
   /* Inapplicable / disabled = sand hue at full brightness with a line-through
      (Mike, 2026-09-11, greyed-chips b): the fourth chip fill. No opacity —
@@ -281,6 +285,9 @@ const SORTS = [
   ["date_dug",   "Date-dug",   n => ts(n.created_at)],
   ["date_q",     "Date-Q",     n => ts(n.queuedAt)],
   ["date_rev",   "Date-rev",   n => ts(n.reviewedAt)],
+  // Meaning (ruling meaning-result-order a, 2026-11-09): closeness to the
+  // last Meaning search, closest first under desc; empty without one.
+  ["meaning",    "Meaning",    n => meaningSim ? (meaningSim.has(n.id) ? meaningSim.get(n.id) : null) : null],
 ];
 const RATEFS = [["","All"],["unrated","Unrated"],["5","5 ★"],["4","≥ 4 ★"],["3","3 ★"],["pickled","Pickled (1–2 ★)"],["keepers","Keepers"]];
 // yt_nuggets.nug_ai_abstract_rating column comment is the source of truth
@@ -306,6 +313,11 @@ let vizHi = 70, vizLo = 30;
 const DEFAULTS = { scope: "", src: "", cat: "", domain: "", age: "", linked: "", ratef: "",
   expired: false, listed: "all", played: false, ytRoute: "page", sort: "appeal", dir: "desc", sortOrigin: "user",
   group: "", zoom: 1,
+  // Search (rulings viewer-search-control a, search-kind-control a,
+  // 2026-11-09): q = the text, qKind = "" | "words" | "meaning", modRat = also
+  // search the model's rationale; sortBeforeMeaning = the Sort to go back to
+  // when a Meaning search ends.
+  q: "", qKind: "", modRat: false, sortBeforeMeaning: "",
   // Focus strip (spec §14): both remembered on the device (strip-default b).
   focus: false, stripMode: "where" };
 const LISTED = [["all", "All"], ["hidden", "Hide-Qd"], ["audio", "Audio only"], ["video", "Video only"], ["read", "Read only"]]; // "Hide-Qd" = hide items already on any list (Mike's label, 2026-08-23)
@@ -333,7 +345,7 @@ if (!LISTED.some(l => l[0] === state.listed)) state.listed = "all";
 if (!LINKED.some(l => l[0] === state.linked)) state.linked = "";
 // A Sort written by the removed Group=Video side effect (Mike 2026-09-19,
 // d18 stale-side-effect-sort a): back to the default Sort, mark dropped.
-if (state.sortOrigin === "side_effect") { state.sort = DEFAULTS.sort; state.sortOrigin = DEFAULTS.sortOrigin; localStorage.setItem("ytr3", JSON.stringify(state)); }
+if (state.sortOrigin === "side_effect" && state.sort !== "meaning") { state.sort = DEFAULTS.sort; state.sortOrigin = DEFAULTS.sortOrigin; localStorage.setItem("ytr3", JSON.stringify(state)); }
 { const pl = new URLSearchParams(location.search).get("listed"); if (pl && LISTED.some(l => l[0] === pl)) state.listed = pl; }
 let openId = null;
 // Group-header fold state (Mike, 2026-08-26): a MODE plus per-header
@@ -531,7 +543,7 @@ function linkedPass(n) {
   return true; // any
 }
 function contentPass(n) {
-  return scopePass(n) && sourcePass(n) && catPass(n) && domPass(n) && agePass(n) && linkedPass(n);
+  return scopePass(n) && sourcePass(n) && catPass(n) && domPass(n) && agePass(n) && linkedPass(n) && searchPass(n);
 }
 // Scope match for one value (mirror of scopePass's switch, for counting).
 function scopeMatch(n, val) {
@@ -564,17 +576,17 @@ function facetCounts() {
     const jx = (state.played || !n.playedAt) && (lm
       ? n.queueList === lm // option b: the list wins visibility in a mode
       : (state.expired || !isExpired(n)) && !(state.listed === "hidden" && queued(n)) && !n.extra); // judgment minus the rating dropdown
-    const sc = scopePass(n), sr = sourcePass(n), ca = catPass(n), dm = domPass(n), ag = agePass(n), lk = linkedPass(n);
-    if (j && sc && sr && dm && ag && lk) { bump(F.cat, ""); for (const c of categoriesOf(n)) bump(F.cat, c); }
-    if (j && sc && sr && ca && ag && lk) { bump(F.domain, ""); if (n.domain) bump(F.domain, n.domain); }
-    if (j && sc && sr && ca && dm && lk) { bump(F.age, ""); const d = ageDays(n); for (const [val] of AGES) if (val && d <= Number(val)) bump(F.age, val); }
-    if (j && sc && sr && ca && dm && ag) {
+    const se = searchPass(n), sc = scopePass(n), sr = sourcePass(n), ca = catPass(n), dm = domPass(n), ag = agePass(n), lk = linkedPass(n);
+    if (se && j && sc && sr && dm && ag && lk) { bump(F.cat, ""); for (const c of categoriesOf(n)) bump(F.cat, c); }
+    if (se && j && sc && sr && ca && ag && lk) { bump(F.domain, ""); if (n.domain) bump(F.domain, n.domain); }
+    if (se && j && sc && sr && ca && dm && lk) { bump(F.age, ""); const d = ageDays(n); for (const [val] of AGES) if (val && d <= Number(val)) bump(F.age, val); }
+    if (se && j && sc && sr && ca && dm && ag) {
       bump(F.linked, "");
       const lc = linkedContent(n);
       if (!lc) bump(F.linked, "none");
       else { bump(F.linked, "any"); if (lc.audio) bump(F.linked, "audio"); if (lc.video) bump(F.linked, "video"); if (lc.audio && lc.video) bump(F.linked, "both"); }
     }
-    if (jx && sc && sr && ca && dm && ag && lk) {
+    if (se && jx && sc && sr && ca && dm && ag && lk) {
       const r = n.nugAbstractRating;
       if (pickled(n)) bump(F.rating, "pickled");
       else {
@@ -614,6 +626,78 @@ function comparator() {
 }
 function tieBreak(a, b) {
   return (b.personal_score - a.personal_score) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
+// ---- search (rulings viewer-search-control a, search-kind-control a,
+// search-result-route a, meaning-result-order a, 2026-11-09) ----------------
+// The result lives in memory, not in state: searchIds = the nugget ids that
+// pass (null = no search), meaningSim = id -> closeness (Meaning only). The
+// saved state holds only the text, the kind and the mod-rat switch, and a
+// reload runs the search again.
+let searchIds = null, meaningSim = null, searchStatus = "", searchN = 0, searchWord = "", searchSeq = 0, qDraft = state.q || "";
+function searchPass(n) { return !searchIds || searchIds.has(n.id); }
+// The server answers over the whole table; the status says how many of its
+// hits are in the loaded subset when that is fewer, so the count and the list
+// agree ("1,127 hits, 40 loaded").
+// Computed at each repaint, so a wider Scope or Source loaded after the
+// search updates the loaded count without a new search.
+function hitStatus() {
+  if (searchStatus) return searchStatus;
+  if (!searchIds) return "";
+  let loaded = 0;
+  for (const id of searchIds) if (byId.has(id)) loaded++;
+  return Number(searchN).toLocaleString() + " " + searchWord + (loaded < searchN ? ", " + loaded.toLocaleString() + " loaded" : "");
+}
+function meaningBase() { return localStorage.getItem("cr_meaning_url") || "http://localhost:8765"; }
+// Drop the result; if the Sort is the Meaning side effect, hand back the Sort
+// the user had before.
+function dropSearchResult() {
+  searchIds = null; meaningSim = null; searchStatus = "";
+  if (state.sort === "meaning") { state.sort = state.sortBeforeMeaning || DEFAULTS.sort; state.sortOrigin = "user"; }
+  state.sortBeforeMeaning = "";
+}
+function clearSearch() {
+  searchSeq++; qDraft = ""; state.q = ""; state.qKind = "";
+  dropSearchResult(); touched();
+}
+// Run one search. kind "words" asks the nugget API, "meaning" the laptop's
+// search server; both answer { n, ids } (Meaning also sims). An empty text
+// means no search. On a failed call nothing is filtered and the status says why.
+async function runSearch(kind, q) {
+  q = String(q || "").trim();
+  if (!q) { clearSearch(); return; }
+  const seq = ++searchSeq;
+  const rat = state.modRat ? 1 : 0;
+  const base = kind === "meaning" ? meaningBase() : BASE;
+  const url = base + "/search?q=" + encodeURIComponent(q) + "&rationale=" + rat + (kind === "meaning" ? "&n=200" : "");
+  qDraft = q; searchStatus = "searching…"; renderControls();
+  let res, data = null, fail = "";
+  try {
+    res = await fetch(url, { headers: keyed() });
+    if (res.status === 401) fail = "key rejected";
+    else if (!res.ok) fail = "search failed (" + res.status + ")";
+    else data = await res.json();
+  } catch (e) {
+    fail = kind === "meaning" ? "meaning server not reachable at " + base : "search failed (no answer)";
+  }
+  if (seq !== searchSeq) return; // a newer search or a clear has taken over
+  state.q = q;
+  if (fail) {
+    dropSearchResult(); state.qKind = ""; searchStatus = fail; touched(); return;
+  }
+  const ids = (data.ids || []).map(String);
+  searchIds = new Set(ids);
+  if (kind === "meaning") {
+    meaningSim = new Map(ids.map((id, i) => [id, (data.sims || [])[i]]));
+    if (state.sort !== "meaning") { state.sortBeforeMeaning = state.sort; state.sort = "meaning"; state.sortOrigin = "side_effect"; }
+    searchN = data.n ?? ids.length; searchWord = "closest"; searchStatus = "";
+  } else {
+    meaningSim = null;
+    if (state.sort === "meaning") { state.sort = state.sortBeforeMeaning || DEFAULTS.sort; state.sortOrigin = "user"; state.sortBeforeMeaning = ""; }
+    searchN = data.n ?? ids.length; searchWord = "hits"; searchStatus = "";
+  }
+  state.qKind = kind;
+  touched();
 }
 
 function visible() {
@@ -755,6 +839,11 @@ function renderControls() {
   // "Queued (Q)" included/hidden (renamed 2026-08-23 — "Q shown" did not say
   // what it did): nuggets you marked Q are either included in the list or
   // hidden from it; the clips page / playlist remain the queue view.
+  // Typing must survive a repaint caused elsewhere: the draft text and the
+  // focus are carried across the rebuild (qDraft follows each keystroke).
+  const qOld = document.getElementById("cQ");
+  const qFocus = !!qOld && document.activeElement === qOld;
+  const searchOn = !!(state.q && state.qKind);
   document.getElementById("row3").innerHTML =
     selectHtml("cRate", "Rating", withCount(RATEFS, F.rating), state.ratef, fillFor("ratef")) +
     '<span class="ctl"><label for="cExp">Expired</label><button id="cExp" class="' + (state.expired ? "user-set" : "") +
@@ -762,6 +851,17 @@ function renderControls() {
     '<span class="ctl"><label for="cPlayed">Played</label><button id="cPlayed" class="' + (state.played ? "user-set" : "") +
       '" title="items a list renderer already finished: hidden, or shown dimmed">' + (state.played ? "shown" : "hidden") + "</button></span>" +
     selectHtml("cListed", "List as (A/V/R)", LISTED, state.listed, fillFor("listed")) +
+    // Search group (rulings viewer-search-control a, search-kind-control a,
+    // button-icons a, 2026-11-09): Enter or Aa = Words, ≈ = Meaning, the
+    // toggle widens both to the model's rationale, ✕ shows while a search runs.
+    '<span class="ctl search"><label for="cQ">Search</label><span class="srow">' +
+      '<input id="cQ" type="text" size="18" placeholder="words or a question" autocomplete="off" value="' + esc(qDraft) + '" class="' + (searchOn ? "user-set" : "") + '">' +
+      '<button id="cQWords" title="Words: exact words in the headline and abstract; quotes make a phrase, a leading minus excludes, OR between words">Aa</button>' +
+      '<button id="cQMeaning" title="Meaning: the nuggets closest in sense, from the vectors on the laptop">≈</button>' +
+      '<button id="cQRat" class="' + (state.modRat ? "user-set" : "") + '" title="also search the model&#39;s rationale, the coach&#39;s reason for the nugget">include mod-rat</button>' +
+      (searchOn ? '<button id="cQClear" title="clear the search">✕</button>' : "") +
+      (hitStatus() ? '<span id="cQStatus" class="qstat">' + esc(hitStatus()) + "</span>" : "") +
+    "</span></span>" +
     '<span class="gap"></span>' +
     '<span class="ctl"><label>&nbsp;</label><button id="zoomOut" class="util" title="smaller text">A−</button></span>' +
     '<span class="ctl"><label>&nbsp;</label><button id="zoomIn" class="util" title="larger text">A+</button></span>';
@@ -773,7 +873,7 @@ function renderControls() {
   bind("cAge", "age");
   bind("cLinked", "linked");
   // Everything but Scope/Source/Apply is inert until a subset is loaded.
-  for (const id of ["cCat", "cDomain", "cAge", "cLinked", "cGroup", "cFold", "cSort", "cDir", "cRate", "cExp", "cPlayed", "cListed", "zoomIn", "zoomOut", "cFocus"]) {
+  for (const id of ["cCat", "cDomain", "cAge", "cLinked", "cGroup", "cFold", "cSort", "cDir", "cRate", "cExp", "cPlayed", "cListed", "cQ", "cQWords", "cQMeaning", "cQRat", "zoomIn", "zoomOut", "cFocus"]) {
     const el = document.getElementById(id);
     if (el) el.disabled = !loadedSel;
   }
@@ -793,6 +893,19 @@ function renderControls() {
   bind("cListed", "listed", () => { playerStop(); });
   document.getElementById("zoomIn").onclick = () => zoomStep(1);
   document.getElementById("zoomOut").onclick = () => zoomStep(-1);
+  // Search handlers read the field at the moment of the press.
+  const qIn = document.getElementById("cQ");
+  qIn.oninput = () => { qDraft = qIn.value; };
+  qIn.onkeydown = (e) => { if (e.key === "Enter") runSearch("words", qIn.value); };
+  document.getElementById("cQWords").onclick = () => runSearch("words", qIn.value);
+  document.getElementById("cQMeaning").onclick = () => runSearch("meaning", qIn.value);
+  document.getElementById("cQRat").onclick = () => {
+    state.modRat = !state.modRat; save();
+    if (state.q && state.qKind) runSearch(state.qKind, state.q); else renderControls();
+  };
+  const qClr = document.getElementById("cQClear");
+  if (qClr) qClr.onclick = () => clearSearch();
+  if (qFocus) { qIn.focus(); try { qIn.setSelectionRange(qIn.value.length, qIn.value.length); } catch (e) {} }
 }
 function bind(id, prop, after) {
   const el = document.getElementById(id);
@@ -860,6 +973,7 @@ function contentFilterText(withScope) {
   if (state.domain) out.push("Domain " + state.domain);
   if (state.age) out.push("Age " + ((AGES.find(a => a[0] === state.age) || [])[1] || state.age));
   if (state.linked) out.push("Linked " + ((LINKED.find(a => a[0] === state.linked) || [])[1] || state.linked));
+  if (state.q && state.qKind) out.push("Search " + (state.qKind === "meaning" ? "Meaning " : "") + "“" + state.q + "”");
   return out.join(" · ");
 }
 function posText() {
@@ -2457,6 +2571,9 @@ async function load() {
   // 2026-08-23), then refresh in the background.
   try { const c = localStorage.getItem("ytr3_facets"); if (c) facets = JSON.parse(c); } catch (e) {}
   render();
+  // A saved search runs again on reload (ruling viewer-search-control a); it
+  // asks over the whole table, so it need not wait for the subset.
+  if (state.q && state.qKind) runSearch(state.qKind, state.q);
   let res;
   try { res = await fetch(BASE + "/facets", { headers: keyed() }); }
   catch (e) { if (!facets) document.getElementById("list").innerHTML = '<div class="empty">Could not reach the nugget API.</div>'; return; }
