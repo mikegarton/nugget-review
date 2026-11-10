@@ -669,11 +669,18 @@ async function runSearch(kind, q) {
   const seq = ++searchSeq;
   const rat = state.modRat ? 1 : 0;
   const base = kind === "meaning" ? meaningBase() : BASE;
-  const url = base + "/search?q=" + encodeURIComponent(q) + "&rationale=" + rat + (kind === "meaning" ? "&n=200" : "");
+  // Meaning ranks within the loaded set (ruling meaning-within-loaded a,
+  // 2026-11-09): the loaded ids go to the server in a POST body and the 200
+  // closest among them come back; under Scope All that is every nugget.
+  const url = base + "/search" + (kind === "meaning" ? "" : "?q=" + encodeURIComponent(q) + "&rationale=" + rat);
+  const req = kind === "meaning"
+    ? { method: "POST", headers: keyed({ "content-type": "application/json" }),
+        body: JSON.stringify({ q, rationale: rat, n: 200, ids: all.map(n => n.id) }) }
+    : { headers: keyed() };
   qDraft = q; searchStatus = "searching…"; renderControls();
   let res, data = null, fail = "";
   try {
-    res = await fetch(url, { headers: keyed() });
+    res = await fetch(url, req);
     if (res.status === 401) fail = "key rejected";
     else if (!res.ok) fail = "search failed (" + res.status + ")";
     else data = await res.json();
@@ -820,6 +827,11 @@ function renderControls() {
   // Row 2 — order: Group, Sort, Dir (cause left of effect; Group writes
   // Sort's default, so its yellow side-effect appears downstream).
   const sortFill = state.sortOrigin === "side_effect" ? "side-effect" : fillFor("sort");
+  // Typing must survive a repaint caused elsewhere: the draft text and the
+  // focus are carried across the rebuild (qDraft follows each keystroke).
+  const qOld = document.getElementById("cQ");
+  const qFocus = !!qOld && document.activeElement === qOld;
+  const searchOn = !!(state.q && state.qKind);
   document.getElementById("row2").innerHTML =
     selectHtml("cGroup", "Group", GROUPS, state.group, fillFor("group")) +
     // Fold chip (Mike, 2026-08-26): only when grouping is on. Shows the
@@ -832,27 +844,10 @@ function renderControls() {
       : "") +
     selectHtml("cSort", "Sort", SORTS.map(s => [s[0], s[1]]), state.sort, sortFill) +
     '<span class="ctl"><label for="cDir">Dir</label><button id="cDir" class="' + (state.dir === "asc" ? "user-set" : "") +
-      '" title="ascending is the weeding view">' + (state.dir === "asc" ? "▲ asc" : "▼ desc") + "</button></span>";
-    // (The old row-2 "A / V / R ›" jump button is gone, 2026-08-23: it showed
-    // no state and duplicated the Listed dropdown, the one real mode control.)
-  // Row 3 — [Apply while pending], Rating, Expired, Queued (Q), gap, zoom pair.
-  // "Queued (Q)" included/hidden (renamed 2026-08-23 — "Q shown" did not say
-  // what it did): nuggets you marked Q are either included in the list or
-  // hidden from it; the clips page / playlist remain the queue view.
-  // Typing must survive a repaint caused elsewhere: the draft text and the
-  // focus are carried across the rebuild (qDraft follows each keystroke).
-  const qOld = document.getElementById("cQ");
-  const qFocus = !!qOld && document.activeElement === qOld;
-  const searchOn = !!(state.q && state.qKind);
-  document.getElementById("row3").innerHTML =
-    selectHtml("cRate", "Rating", withCount(RATEFS, F.rating), state.ratef, fillFor("ratef")) +
-    '<span class="ctl"><label for="cExp">Expired</label><button id="cExp" class="' + (state.expired ? "user-set" : "") +
-      '" title="re-admit unrated nuggets past their categories\' TTL">' + (state.expired ? "shown" : "hidden") + "</button></span>" +
-    '<span class="ctl"><label for="cPlayed">Played</label><button id="cPlayed" class="' + (state.played ? "user-set" : "") +
-      '" title="items a list renderer already finished: hidden, or shown dimmed">' + (state.played ? "shown" : "hidden") + "</button></span>" +
-    selectHtml("cListed", "List as (A/V/R)", LISTED, state.listed, fillFor("listed")) +
+      '" title="ascending is the weeding view">' + (state.dir === "asc" ? "▲ asc" : "▼ desc") + "</button></span>" +
     // Search group (rulings viewer-search-control a, search-kind-control a,
-    // button-icons a, 2026-11-09): Enter or Aa = Words, ≈ = Meaning, the
+    // button-icons a, 2026-11-09; moved to row 2 at Mike's word the same day, so
+    // the zoom pair stays nearer the screen): Enter or Aa = Words, ≈ = Meaning, the
     // toggle widens both to the model's rationale, ✕ shows while a search runs.
     '<span class="ctl search"><label for="cQ">Search</label><span class="srow">' +
       '<input id="cQ" type="text" size="18" placeholder="words or a question" autocomplete="off" value="' + esc(qDraft) + '" class="' + (searchOn ? "user-set" : "") + '">' +
@@ -861,7 +856,20 @@ function renderControls() {
       '<button id="cQRat" class="' + (state.modRat ? "user-set" : "") + '" title="also search the model&#39;s rationale, the coach&#39;s reason for the nugget">include mod-rat</button>' +
       (searchOn ? '<button id="cQClear" title="clear the search">✕</button>' : "") +
       (hitStatus() ? '<span id="cQStatus" class="qstat">' + esc(hitStatus()) + "</span>" : "") +
-    "</span></span>" +
+    "</span></span>";
+    // (The old row-2 "A / V / R ›" jump button is gone, 2026-08-23: it showed
+    // no state and duplicated the Listed dropdown, the one real mode control.)
+  // Row 3 — [Apply while pending], Rating, Expired, Queued (Q), gap, zoom pair.
+  // "Queued (Q)" included/hidden (renamed 2026-08-23 — "Q shown" did not say
+  // what it did): nuggets you marked Q are either included in the list or
+  // hidden from it; the clips page / playlist remain the queue view.
+  document.getElementById("row3").innerHTML =
+    selectHtml("cRate", "Rating", withCount(RATEFS, F.rating), state.ratef, fillFor("ratef")) +
+    '<span class="ctl"><label for="cExp">Expired</label><button id="cExp" class="' + (state.expired ? "user-set" : "") +
+      '" title="re-admit unrated nuggets past their categories\' TTL">' + (state.expired ? "shown" : "hidden") + "</button></span>" +
+    '<span class="ctl"><label for="cPlayed">Played</label><button id="cPlayed" class="' + (state.played ? "user-set" : "") +
+      '" title="items a list renderer already finished: hidden, or shown dimmed">' + (state.played ? "shown" : "hidden") + "</button></span>" +
+    selectHtml("cListed", "List as (A/V/R)", LISTED, state.listed, fillFor("listed")) +
     '<span class="gap"></span>' +
     '<span class="ctl"><label>&nbsp;</label><button id="zoomOut" class="util" title="smaller text">A−</button></span>' +
     '<span class="ctl"><label>&nbsp;</label><button id="zoomIn" class="util" title="larger text">A+</button></span>';

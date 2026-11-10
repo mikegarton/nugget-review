@@ -187,7 +187,7 @@ zone; frequency orders the rest; utilities last.
   array) · Domain · Age (≤ 2 days … ≤ 1 year, by publish date).
 - **Pinned, far right, never scrolls — Queued**: `Q shown` / `Q hidden`
   removes queued nuggets from the list ("already decided").
-- **Row 2 — order**: Group (None · Video) · Sort · ▲▼. Group never
+- **Row 2 — order**: Group (None · Video) · Sort · ▲▼ · Search (Aa · ≈ · include mod-rat). Group never
   changes Sort (2026-09-19). A tap on a card (stars, A/V/R, K) never
   moves it; the declared order returns on the next filter/sort change.
   Sort keys, every one both directions (ascending is the weeding view):
@@ -202,8 +202,8 @@ zone; frequency orders the rest; utilities last.
 - **Row 3 — judgment + utilities**: Rating (All · Unrated · 5★ · ≥4★ · 3★ ·
   Pickled 1–2★) · Expired (hidden / shown; re-admits unrated nuggets past
   their categories' TTL — each wears "expired: <tag> <N>d" naming the tag
-  whose TTL fired) · Search · A− / A+.
-- **Search group (row 3, 2026-11-09)**: a text field with two buttons. **Aa**
+  whose TTL fired) · A− / A+.
+- **Search group (row 2, after Dir; 2026-11-09)**: a text field with two buttons. **Aa**
   (or Enter) runs a Words search through yt-review's `/search` (exact words in
   the headline and abstract; quotes make a phrase, a leading minus excludes, OR
   between words). **≈** runs a Meaning search against the laptop's search
