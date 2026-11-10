@@ -127,6 +127,16 @@ surface.</p>
     background:none;color:var(--blue);cursor:pointer">Test saved key</button>
   <div class="note" id="key-status"></div>
   <div class="note" id="key-test"></div>
+  <b style="display:block;margin-top:12px">Meaning server address</b>
+  <input type="text" id="in-meaning" placeholder="http://localhost:8765"
+    style="width:100%;padding:9px 10px;font:inherit;margin:6px 0;
+    border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)">
+  <button onclick="saveMeaningUrl()"
+    style="font:inherit;border:none;border-radius:8px;padding:9px 14px;
+    background:var(--blue);color:var(--bg);cursor:pointer">Save</button>
+  <div class="note" id="meaning-status"></div>
+  <p class="note">The default is http://localhost:8765, the laptop's own search
+  server. The address changes only when the laptop is reached from another device.</p>
 </div>
 
 <h3>Use</h3>
@@ -229,6 +239,14 @@ function saveKey() {
   document.getElementById("in-key").value = "";
   document.getElementById("key-status").textContent = "Saved on this device.";
 }
+// The viewer's Meaning search asks this address (ruling search-kind-control a,
+// 2026-11-09); a blank field leaves the saved address alone.
+function saveMeaningUrl() {
+  const v = document.getElementById("in-meaning").value.trim();
+  if (!v) { document.getElementById("meaning-status").textContent = "Nothing to save."; return; }
+  try { localStorage.setItem("cr_meaning_url", v); } catch (e) {}
+  document.getElementById("meaning-status").textContent = "Saved on this device.";
+}
 // Reports the saved key's form, a fingerprint (the first 8 hex characters of
 // its SHA-256, to compare with the vault's copy) and yt-review's answer to a
 // read sent with it, without showing the key.
@@ -255,6 +273,11 @@ try {
   if (localStorage.getItem("cr_review_key"))
     document.getElementById("key-status").textContent =
       "A review key is already saved on this device.";
+} catch (e) {}
+try {
+  const m = localStorage.getItem("cr_meaning_url");
+  document.getElementById("meaning-status").textContent =
+    m ? "Saved address: " + m : "Using the default http://localhost:8765";
 } catch (e) {}
 // PWA install-eligibility: this page is the manifest's start_url, so it
 // must register the service worker for Chrome to offer a real Install.
