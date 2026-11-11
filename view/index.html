@@ -57,6 +57,17 @@
   .ctl.search .srow { display: flex; gap: 4px; align-items: center; }
   .ctl.search input { background: var(--card); color: var(--ink); border: 1px solid var(--line);
     border-radius: 16px; padding: 6px 12px; font-size: 14px; max-width: 30vw; }
+  /* Words (Aa) and Meaning (the vector icon) are a matching pair: one box
+     size, the icon stroked in the text colour at the letters' stem weight. */
+  .ctl.search #cQWords, .ctl.search #cQMeaning { box-sizing: border-box; width: 46px; height: 32px;
+    padding: 0; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+  .ctl.search #cQMeaning svg { width: 18px; height: 18px; fill: none; stroke: currentColor;
+    stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  /* Playlist row in a view of its own (state.plOwn): absent from the rows
+     view, and the only row under the strip in the playlist view. */
+  #rows.noPl #rowBuilder { display: none; }
+  header.focus.plv #rows { display: block; }
+  header.focus.plv #rows > :not(#rowBuilder) { display: none; }
   .ctl.search .qstat { font-size: 11px; color: var(--faint); white-space: nowrap; }
   .ctl .side-effect { border-color: var(--yellow); color: var(--yellow); }
   /* Inapplicable / disabled = sand hue at full brightness with a line-through
@@ -205,7 +216,7 @@
 </head>
 <body>
 <!-- The rating star's one shape (spec §16.2); every star button references it. -->
-<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="star5" viewBox="0 0 24 24"><path d="M12 2.6l2.9 6.2 6.8.8-5 4.7 1.3 6.7-6-3.3-6 3.3 1.3-6.7-5-4.7 6.8-.8z"/></symbol></svg>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="star5" viewBox="0 0 24 24"><path d="M12 2.6l2.9 6.2 6.8.8-5 4.7 1.3 6.7-6-3.3-6 3.3 1.3-6.7-5-4.7 6.8-.8z"/></symbol><!-- The Meaning button's icon: left axis, bottom axis, a vector from the origin two thirds of the way to the top right. --><symbol id="vecIcon" viewBox="0 0 24 24"><path d="M4 3v17h17M4 20L15.3 8.7M10.6 8.2h5.2v5.2"/></symbol></svg>
 <header>
   <!-- Focus strip (spec §14): shown INSTEAD of #rows while state.focus. -->
   <div id="strip" class="bar">
@@ -319,7 +330,12 @@ const DEFAULTS = { scope: "", src: "", cat: "", domain: "", age: "", linked: "",
   // when a Meaning search ends.
   q: "", qKind: "", modRat: false, sortBeforeMeaning: "",
   // Focus strip (spec §14): both remembered on the device (strip-default b).
-  focus: false, stripMode: "where" };
+  focus: false, stripMode: "where",
+  // Playlist builder row (row 4), remembered on the device. plOwn false: it
+  // rides with rows 1 to 3 and the View chip steps strip -> rows 1234. plOwn
+  // true: it shows under the strip and the chip steps strip -> strip with
+  // row 4 -> rows 123. plView = the strip-with-row-4 view is the one showing.
+  plOwn: false, plView: false };
 const LISTED = [["all", "All"], ["hidden", "Hide-Qd"], ["audio", "Audio only"], ["video", "Video only"], ["read", "Read only"]]; // "Hide-Qd" = hide items already on any list (Mike's label, 2026-08-23)
 let all = [], slope = 0, intercept = 0;
 let byId = new Map(); // id -> nugget (bodies arrive by id)
@@ -817,7 +833,10 @@ function renderControls() {
   // (Mike, 2026-10-01, focus-chip-pin b); label = the ACTION ("focus"
   // collapses the block to the strip); inert until a subset loads.
   document.getElementById("row1").innerHTML =
-    '<span class="ctl"><label for="cFocus">View</label><button id="cFocus" title="collapse the controls to a one-row strip">focus</button></span>' +
+    '<span class="ctl"><label for="cFocus">View</label><button id="cFocus" title="' +
+      (state.plOwn ? "collapse the controls to a one-row strip (cycle: focus → playlist → controls)"
+                   : "collapse the controls to a one-row strip") +
+      '">focus</button></span>' +
     selectHtml("cScope", "Scope", scopeDefs, state.scope, fillFor("scope")) +
     selectHtml("cSrc", "Source", [["", "All" + fmtN(srcAllN)]].concat(srcDefs), state.src, srcFill) +
     selectHtml("cCat", "Category", withCount([["","All"]].concat(catList.map(c => [c, esc(c)])), F.cat), state.cat, fillFor("cat")) +
@@ -852,7 +871,7 @@ function renderControls() {
     '<span class="ctl search"><label for="cQ">Search</label><span class="srow">' +
       '<input id="cQ" type="text" size="18" placeholder="words or a question" autocomplete="off" value="' + esc(qDraft) + '" class="' + (searchOn ? "user-set" : "") + '">' +
       '<button id="cQWords" title="Words: exact words in the headline and abstract; quotes make a phrase, a leading minus excludes, OR between words">Aa</button>' +
-      '<button id="cQMeaning" title="Meaning: the nuggets closest in sense, from the vectors on the laptop">≈</button>' +
+      '<button id="cQMeaning" title="Meaning: the nuggets closest in sense, from the vectors on the laptop" aria-label="Meaning search"><svg aria-hidden="true"><use href="#vecIcon"/></svg></button>' +
       '<button id="cQRat" class="' + (state.modRat ? "user-set" : "") + '" title="also search the model&#39;s rationale, the coach&#39;s reason for the nugget">include mod-rat</button>' +
       (searchOn ? '<button id="cQClear" title="clear the search">✕</button>' : "") +
       (hitStatus() ? '<span id="cQStatus" class="qstat">' + esc(hitStatus()) + "</span>" : "") +
@@ -872,7 +891,10 @@ function renderControls() {
     selectHtml("cListed", "List as (A/V/R)", LISTED, state.listed, fillFor("listed")) +
     '<span class="gap"></span>' +
     '<span class="ctl"><label>&nbsp;</label><button id="zoomOut" class="util" title="smaller text">A−</button></span>' +
-    '<span class="ctl"><label>&nbsp;</label><button id="zoomIn" class="util" title="larger text">A+</button></span>';
+    '<span class="ctl"><label>&nbsp;</label><button id="zoomIn" class="util" title="larger text">A+</button></span>' +
+    '<span class="ctl"><label for="cPlRow">Playlist row</label><button id="cPlRow" class="' + (state.plOwn ? "user-set" : "") +
+      '" title="where the playlist builder row shows: with these rows (View steps focus → controls), or under the one-row strip (View steps focus → playlist → controls)">' +
+      (state.plOwn ? "w/focus" : "w/controls") + "</button></span>";
   bind("cScope", "scope");
   bind("cSrc", "src", () => { state.srcOrigin = "user"; });
   if (pending) document.getElementById("apply").onclick = () => { if (!loading) loadData(); };
@@ -881,11 +903,13 @@ function renderControls() {
   bind("cAge", "age");
   bind("cLinked", "linked");
   // Everything but Scope/Source/Apply is inert until a subset is loaded.
-  for (const id of ["cCat", "cDomain", "cAge", "cLinked", "cGroup", "cFold", "cSort", "cDir", "cRate", "cExp", "cPlayed", "cListed", "cQ", "cQWords", "cQMeaning", "cQRat", "zoomIn", "zoomOut", "cFocus"]) {
+  for (const id of ["cCat", "cDomain", "cAge", "cLinked", "cGroup", "cFold", "cSort", "cDir", "cRate", "cExp", "cPlayed", "cListed", "cQ", "cQWords", "cQMeaning", "cQRat", "zoomIn", "zoomOut", "cFocus", "cPlRow"]) {
     const el = document.getElementById(id);
     if (el) el.disabled = !loadedSel;
   }
-  document.getElementById("cFocus").onclick = () => { state.focus = true; save(); render(); };
+  // View cycle, one step forward from the rows: always to the strip alone.
+  document.getElementById("cFocus").onclick = () => { state.focus = true; state.plView = false; save(); render(); };
+  document.getElementById("cPlRow").onclick = () => { state.plOwn = !state.plOwn; state.plView = false; save(); render(); };
   // Group never writes Sort (Mike 2026-09-19, d14 group-sort-side-effect a;
   // replaces the 2026-08-20 Group=Video -> My_rating side effect).
   bind("cGroup", "group");
@@ -993,7 +1017,9 @@ function posText() {
 function renderStrip() {
   const mode = STRIP_MODES.includes(state.stripMode) ? state.stripMode : "where";
   document.getElementById("stripFocus").innerHTML =
-    '<button id="sFocus" title="expand the control rows">controls</button>';
+    (state.plOwn && !state.plView
+      ? '<button id="sFocus" title="show the playlist row under this strip">playlist</button>'
+      : '<button id="sFocus" title="expand the control rows">controls</button>');
   const pending = applyPending(), applyN = selectionCount();
   document.getElementById("stripApply").innerHTML = !pending ? "" :
     '<button id="sApply" class="apply" title="load this scope and source">' +
@@ -1022,14 +1048,21 @@ function renderStrip() {
         : "");
   }
   document.getElementById("stripSub").innerHTML = sub;
-  document.getElementById("sFocus").onclick = () => { state.focus = false; save(); render(); };
+  // The cycle's step from the strip. Playlist row with the controls (plOwn
+  // false): strip -> rows 1234. With the strip (plOwn true): strip alone ->
+  // strip with the playlist row -> rows 123.
+  document.getElementById("sFocus").onclick = () => {
+    if (state.plOwn && !state.plView) state.plView = true;
+    else { state.focus = false; state.plView = false; }
+    save(); render();
+  };
   const ap = document.getElementById("sApply");
   if (ap) ap.onclick = () => { if (!loading) loadData(); };
   document.getElementById("sMode").onclick = () => {
     state.stripMode = STRIP_MODES[(STRIP_MODES.indexOf(mode) + 1) % STRIP_MODES.length]; save(); renderStrip();
   };
   const sel = document.getElementById("sSel");
-  if (sel) sel.onclick = () => { state.focus = false; save(); render(); };
+  if (sel) sel.onclick = () => { state.focus = false; state.plView = false; save(); render(); };
   const fold = document.getElementById("sFold");
   if (fold) fold.onclick = () => { collapseMode = !collapseMode; gToggled = new Set(); render(); };
   const zi = document.getElementById("sZoomIn"), zo = document.getElementById("sZoomOut");
@@ -1076,6 +1109,8 @@ function render() {
   // rows stay open because the Apply chip needs its row.
   const focus = !!(state.focus && loadedSel);
   document.querySelector("header").classList.toggle("focus", focus);
+  document.querySelector("header").classList.toggle("plv", focus && !!(state.plView && state.plOwn));
+  document.getElementById("rows").classList.toggle("noPl", !focus && !!state.plOwn);
   if (focus) renderStrip(); else posDetach();
   if (!loadedSel) {
     setCount(facets
@@ -1229,7 +1264,7 @@ function renderPlayerBar(v) {
       '<option value="page"' + (state.ytRoute === "page" ? " selected" : "") + '>video → in-page clip</option>' +
       '<option value="app"' + (state.ytRoute === "app" ? " selected" : "") + '>video → YouTube app</option></select>' +
       '<select id="pList" title="play a playlist instead of the visible items"><option value="">visible items</option>' +
-        (playlists || []).map(p => '<option value="' + p.id + '"' + (PL.playlistSel === p.id ? " selected" : "") + ">" + esc(p.kind === "system" ? "Audio list (system)" : p.name) + "</option>").join("") + "</select>" +
+        plNewestFirst(playlists).map(p => '<option value="' + p.id + '"' + (PL.playlistSel === p.id ? " selected" : "") + ">" + esc(p.kind === "system" ? "Audio list (system)" : p.name) + "</option>").join("") + "</select>" +
       '<select id="pPlay" title="what a playlist plays: the card, the full item (its synthesized audio, else its own audio), or the card then the item. Also what an A tap or a commit makes. Playlists and the visible items alike.">' +
         TTS_PLAYS.map(x => '<option value="' + x + '"' + (ttsPlay() === x ? " selected" : "") + ">play: " + x + "</option>").join("") + "</select>" +
       '<select id="pRate" title="speed"><option value="0.85">0.85×</option><option value="1">1×</option><option value="1.15">1.15×</option><option value="1.3">1.3×</option><option value="1.5">1.5×</option></select>' +
@@ -1825,11 +1860,17 @@ function expandPlaylist(id) {
 // Builder row (§9d): counter + Item source + one Commit over the
 // top N of the CURRENT view (display order, group/sort applied, already-in-
 // playlist items skipped), into a new auto-named playlist or an existing one.
+// Playlists for a pulldown: the system Audio list first, then the built ones
+// by creation date, newest first.
+function plNewestFirst(pls) {
+  return (pls || []).slice().sort((a, b) =>
+    ((b.kind === "system") - (a.kind === "system")) || ((ts(b.created_at) || 0) - (ts(a.created_at) || 0)));
+}
 function renderBuilderRow(v) {
   const row = document.getElementById("rowBuilder");
   if (!row) return;
   if (!loadedSel) { row.innerHTML = ""; return; }
-  const built = (playlists || []).filter(p => p.kind === "built");
+  const built = plNewestFirst(playlists).filter(p => p.kind === "built");
   row.innerHTML =
     '<span class="ctl"><label>Playlist builder — top N of this view</label><span>' +
     '<button id="bMinus" class="util" title="minus 1">&#8722;</button>' +
@@ -1874,7 +1915,7 @@ async function builderCommit(v) {
     const newItems = (start) => items.map((it, k) => ({ playlist_id: j.playlist_id, position: start + k, nugget_id: it.nugget_id, play: it.play, item_source: it.item_source, voice: voiceStored(it.voice), played_at: null }));
     if (pl) pl.items = (pl.items || []).concat(newItems(pl.items ? pl.items.length : 0));
     else playlists.push({
-      id: j.playlist_id, kind: "built", name: body.name,
+      id: j.playlist_id, kind: "built", name: body.name, created_at: new Date().toISOString(),
       items: newItems(0),
     });
     msg.textContent = "committed " + j.items + " item(s), " + j.jobs + " render job(s) — first audio in ~15-20 s";
