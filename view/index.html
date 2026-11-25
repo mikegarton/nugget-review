@@ -69,6 +69,12 @@
   header.focus.plv #rows { display: block; }
   header.focus.plv #rows > :not(#rowBuilder) { display: none; }
   .ctl.search .qstat { font-size: 11px; color: var(--faint); white-space: nowrap; }
+  /* The start command under the search row when Meaning found no server. */
+  .ctl.search .srow.help { flex-wrap: wrap; }
+  .ctl.search .qhelp { flex-basis: 100%; font-size: 11px; color: var(--faint); white-space: normal; }
+  .qhelp code, #status code { font-size: 11px; user-select: all; }
+  .mcopy { font-size: 11px; padding: 1px 8px; }
+  #status .mdown { color: #e0704e; }
   .ctl .side-effect { border-color: var(--yellow); color: var(--yellow); }
   /* Inapplicable / disabled = sand hue at full brightness with a line-through
      (Mike, 2026-09-11, greyed-chips b): the fourth chip fill. No opacity —
@@ -665,10 +671,41 @@ function hitStatus() {
   return Number(searchN).toLocaleString() + " " + searchWord + (loaded < searchN ? ", " + loaded.toLocaleString() + " loaded" : "");
 }
 function meaningBase() { return localStorage.getItem("cr_meaning_url") || "http://localhost:8765"; }
+// The laptop's Meaning search server (rulings meaning-server-start a,
+// laptop-detect a, 2026-11-25): its health is read at open, after each
+// Meaning search and when the page comes back into view; when it does not
+// answer, the status strip and the search row show the command that starts
+// it on the laptop, on every device, with a Copy button.
+const MEANING_START_CMD = 'Start-ScheduledTask -TaskName "yt-nugget-search-server"';
+let meaningHealth = null; // null = not asked yet; else { ok, rows?, why? }
+let meaningDown = false;  // the last Meaning search found no server
+async function checkMeaningHealth() {
+  let h = { ok: false };
+  try {
+    const res = await fetch(meaningBase() + "/health", { headers: keyed() });
+    if (res.ok) { const d = await res.json(); h = { ok: true, rows: d.rows }; }
+    else h = { ok: false, why: res.status === 401 ? "key rejected" : "error " + res.status };
+  } catch (e) {}
+  meaningHealth = h;
+  paintStatus();
+}
+function meaningStartHtml() {
+  return "on the laptop, run in PowerShell: <code>" + esc(MEANING_START_CMD) +
+    '</code> <button class="mcopy" type="button" title="copy the command">Copy</button>';
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest && e.target.closest(".mcopy");
+  if (!b) return;
+  navigator.clipboard.writeText(MEANING_START_CMD)
+    .then(() => { b.textContent = "Copied"; }, () => { b.textContent = "copy failed"; });
+});
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && meaningHealth && !meaningHealth.ok) checkMeaningHealth();
+});
 // Drop the result; if the Sort is the Meaning side effect, hand back the Sort
 // the user had before.
 function dropSearchResult() {
-  searchIds = null; meaningSim = null; searchStatus = "";
+  searchIds = null; meaningSim = null; searchStatus = ""; meaningDown = false;
   if (state.sort === "meaning") { state.sort = state.sortBeforeMeaning || DEFAULTS.sort; state.sortOrigin = "user"; }
   state.sortBeforeMeaning = "";
 }
@@ -693,7 +730,7 @@ async function runSearch(kind, q) {
     ? { method: "POST", headers: keyed({ "content-type": "application/json" }),
         body: JSON.stringify({ q, rationale: rat, n: 200, ids: all.map(n => n.id) }) }
     : { headers: keyed() };
-  qDraft = q; searchStatus = "searching…"; renderControls();
+  qDraft = q; searchStatus = "searching…"; meaningDown = false; renderControls();
   let res, data = null, fail = "";
   try {
     res = await fetch(url, req);
@@ -705,6 +742,14 @@ async function runSearch(kind, q) {
   }
   if (seq !== searchSeq) return; // a newer search or a clear has taken over
   state.q = q;
+  if (kind === "meaning") {
+    const down = !res;
+    meaningHealth = down ? { ok: false }
+      : res.status === 401 ? { ok: false, why: "key rejected" }
+      : { ok: true, rows: meaningHealth && meaningHealth.ok ? meaningHealth.rows : undefined };
+    paintStatus();
+    if (down) { dropSearchResult(); meaningDown = true; state.qKind = ""; searchStatus = fail; touched(); return; }
+  }
   if (fail) {
     dropSearchResult(); state.qKind = ""; searchStatus = fail; touched(); return;
   }
@@ -868,13 +913,14 @@ function renderControls() {
     // button-icons a, 2026-11-09; moved to row 2 at Mike's word the same day, so
     // the zoom pair stays nearer the screen): Enter or Aa = Words, ≈ = Meaning, the
     // toggle widens both to the model's rationale, ✕ shows while a search runs.
-    '<span class="ctl search"><label for="cQ">Search</label><span class="srow">' +
+    '<span class="ctl search"><label for="cQ">Search</label><span class="srow' + (meaningDown ? " help" : "") + '">' +
       '<input id="cQ" type="text" size="18" placeholder="words or a question" autocomplete="off" value="' + esc(qDraft) + '" class="' + (searchOn ? "user-set" : "") + '">' +
       '<button id="cQWords" title="Words: exact words in the headline and abstract; quotes make a phrase, a leading minus excludes, OR between words">Aa</button>' +
       '<button id="cQMeaning" title="Meaning: the nuggets closest in sense, from the vectors on the laptop" aria-label="Meaning search"><svg aria-hidden="true"><use href="#vecIcon"/></svg></button>' +
       '<button id="cQRat" class="' + (state.modRat ? "user-set" : "") + '" title="also search the model&#39;s rationale, the coach&#39;s reason for the nugget">include mod-rat</button>' +
       (searchOn ? '<button id="cQClear" title="clear the search">✕</button>' : "") +
       (hitStatus() ? '<span id="cQStatus" class="qstat">' + esc(hitStatus()) + "</span>" : "") +
+      (meaningDown ? '<span class="qhelp">' + meaningStartHtml() + "</span>" : "") +
     "</span></span>";
     // (The old row-2 "A / V / R ›" jump button is gone, 2026-08-23: it showed
     // no state and duplicated the Listed dropdown, the one real mode control.)
@@ -2565,19 +2611,36 @@ function paceHtml(used, quota, elapsed, limiter) {
 // and after a Scope/Source change — i.e. while Apply shows) and hidden after
 // a load, to give the screen back (Mike, 2026-08-23). Data arrives with
 // /facets (and again with each /data).
-let lastStatus = null;
+// The Meaning server's state rides at the end of the strip (2026-11-25), so
+// the strip also shows when only that part is known.
+let lastStatus = null, statusMain = "", statusAlarm = false;
 function statusVisibility() {
   const el = document.getElementById("status");
-  const show = applyPending() && lastStatus && el.className !== "";
+  const show = applyPending() && el.className !== "";
   el.style.display = show ? "block" : "none";
 }
-function renderStatus(s) {
+function meaningStatusHtml() {
+  if (!meaningHealth) return "";
+  if (meaningHealth.ok) return "Meaning server: on" +
+    (meaningHealth.rows != null ? ", " + Number(meaningHealth.rows).toLocaleString() + " nuggets" : "");
+  return '<span class="mdown">Meaning server: off' + (meaningHealth.why ? " (" + esc(meaningHealth.why) + ")" : "") +
+    " — " + meaningStartHtml() + "</span>";
+}
+function paintStatus() {
   const el = document.getElementById("status");
+  const m = meaningStatusHtml();
+  if (!statusMain && !m) return;
+  el.className = statusAlarm ? "alarm" : "quiet";
+  el.innerHTML = [statusMain, m].filter(Boolean).join(" &nbsp;·&nbsp; ");
+  statusVisibility();
+}
+function renderStatus(s) {
   if (!s) return;
   lastStatus = s;
+  statusMain = ""; statusAlarm = false;
   if (s.alarms && s.alarms.length) {
-    el.className = "alarm";
-    el.textContent = "⚠ " + s.alarms.join(" · ");
+    statusAlarm = true;
+    statusMain = esc("⚠ " + s.alarms.join(" · "));
   } else {
     const bits = [];
     if (s.mtd_cost_usd != null) {
@@ -2591,11 +2654,9 @@ function renderStatus(s) {
         paceHtml(s.supadata.mtd_calls, s.supadata.allotment, s.supadata.cycle_fraction, "Supadata cycle"));
     }
     if (s.drift && s.drift.detail) bits.push(s.drift.breach ? "drift: watch" : "drift ok");
-    if (!bits.length) return;
-    el.className = "quiet";
-    el.innerHTML = "✓ " + bits.join(" &nbsp;·&nbsp; ");
+    if (bits.length) statusMain = "✓ " + bits.join(" &nbsp;·&nbsp; ");
   }
-  statusVisibility();
+  paintStatus();
 }
 
 function applyZoom() { document.body.style.zoom = state.zoom || 1; }
@@ -2620,6 +2681,7 @@ async function load() {
   // 2026-08-23), then refresh in the background.
   try { const c = localStorage.getItem("ytr3_facets"); if (c) facets = JSON.parse(c); } catch (e) {}
   render();
+  checkMeaningHealth();
   // A saved search runs again on reload (ruling viewer-search-control a); it
   // asks over the whole table, so it need not wait for the subset.
   if (state.q && state.qKind) runSearch(state.qKind, state.q);

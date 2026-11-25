@@ -91,6 +91,7 @@
 <div id="queueToday" class="note" style="margin-top:8px" hidden></div>
 <div id="killed" class="cards" style="margin-top:8px"></div>
 <div id="sheetSync" class="note" style="margin-top:8px"></div>
+<div id="meaningServer" class="note" style="margin-top:8px"></div>
 </section>
 
 <section data-sec="feed">
@@ -1237,7 +1238,38 @@ async function load() {
   ops = await res.json();
   render();
 }
+// The laptop's Meaning search server (2026-11-25, rulings meaning-server-start
+// a and laptop-detect a): one line read from its /health, independent of
+// /ops; the cloud cannot see the laptop, so this page asks it directly. When
+// it does not answer, the line carries the command that starts it on the
+// laptop, with a Copy button, on every device.
+const MEANING_START_CMD = 'Start-ScheduledTask -TaskName "yt-nugget-search-server"';
+async function checkMeaningServer() {
+  const el = document.getElementById("meaningServer");
+  const base = localStorage.getItem("cr_meaning_url") || "http://localhost:8765";
+  let line;
+  try {
+    const res = await fetch(base + "/health", { headers: keyed() });
+    if (res.ok) {
+      const d = await res.json();
+      line = "On at " + esc(base) + ": " + Number(d.rows).toLocaleString() + " nuggets loaded" +
+        (d.model ? ", model " + esc(d.model) : "") + ".";
+    } else {
+      line = "Answered " + res.status + (res.status === 401 ? " (review key rejected)" : "") + " at " + esc(base) + ".";
+    }
+  } catch (e) {
+    line = "Off: no answer at " + esc(base) + ". On the laptop, run in PowerShell: <code>" + esc(MEANING_START_CMD) +
+      '</code> <button type="button" class="abtn" id="meaningCopy">Copy</button>';
+  }
+  el.innerHTML = "<b>Meaning search server (laptop).</b> " + line +
+    ' <button type="button" class="abtn" id="meaningRecheck">check again</button>';
+  const cp = document.getElementById("meaningCopy");
+  if (cp) cp.onclick = () => navigator.clipboard.writeText(MEANING_START_CMD)
+    .then(() => { cp.textContent = "Copied"; }, () => { cp.textContent = "copy failed"; });
+  document.getElementById("meaningRecheck").onclick = checkMeaningServer;
+}
 load();
+if (KEY) checkMeaningServer();
 </script>
 </body>
 </html>
